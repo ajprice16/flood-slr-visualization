@@ -1,0 +1,54 @@
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Backend/Dockerfile
+    image: slr-backend:latest
+    container_name: slr-backend
+    volumes:
+      - ./Backend/dem:/app/dem:ro
+      - ./Backend/wp_2020:/app/wp_2020:ro
+      - ./Backend/tile_cache:/app/tile_cache
+    environment:
+      - TILE_CACHE_SIZE=64
+    restart: unless-stopped
+    networks:
+      slr-net:
+        aliases:
+          - backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Frontend/Dockerfile
+    image: slr-frontend:latest
+    container_name: slr-frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      slr-net:
+        aliases:
+          - frontend
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Gateway/Dockerfile
+    image: slr-gateway:latest
+    container_name: slr-gateway
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      slr-net:
+        aliases:
+          - gateway
+
+networks:
+  slr-net:
+    driver: bridge

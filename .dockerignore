@@ -1,0 +1,25 @@
+# Global docker build context exclusions
+# Keep context small to speed up builds
+
+# VCS
+.git/
+.gitignore
+
+# Python virtual envs
+Backend/.venv/
+*.pyc
+__pycache__/
+
+# Node artifacts
+Frontend/node_modules/
+Frontend/dist/
+
+# Large raster data (mounted as volumes at runtime)
+Backend/dem/
+Backend/wp_2020/
+Backend/tile_cache/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/

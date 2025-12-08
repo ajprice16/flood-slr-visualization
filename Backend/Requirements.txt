@@ -1,0 +1,12 @@
+# File: backend/requirements.txt
+###############################################
+fastapi
+uvicorn
+python-multipart
+rasterio
+numpy
+# Additional runtime deps discovered while running main.py
+mercantile
+Pillow
+requests
+# dilluviumdem  # install from your local source if needed
