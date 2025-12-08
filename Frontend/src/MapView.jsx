@@ -93,6 +93,11 @@ export default function MapView({ floodData, bbox, slr, onBoundsChange, pending,
                         name: "Tokyo",
                         coords: [139.6917, 35.6895],
                         textFile: "/cities/tokyo.txt"
+                    },
+                    {
+                        name: "Bangladesh",
+                        coords: [90.4, 22.5],
+                        textFile: "/cities/bangladesh.txt"
                     }
                 ];
 

@@ -50,6 +50,14 @@ export default function App() {
             slr: 1.5,
             textFile: "/cities/tabasco-mexico.txt",
             media: null
+        },
+        {
+            name: "Bangladesh",
+            coords: [90.4, 22.5],
+            zoom: 8,
+            slr: 1,
+            textFile: "/cities/bangladesh.txt",
+            media: null
         }
     ];
 
