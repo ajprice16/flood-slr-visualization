@@ -2,7 +2,7 @@
 import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
 
-export default function MapView({ floodData, bbox, slr, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
+export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
     const debounceRef = useRef(null);
@@ -215,37 +215,22 @@ export default function MapView({ floodData, bbox, slr, onBoundsChange, pending,
 
         const applyRaster = () => {
             const origin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5173';
-            // Use /api for production (gateway) or direct backend for dev
             const apiBase = origin.includes(':5173') ? origin.replace(':5173', ':8000') : '/api';
-            // Cache-bust tile requests when SLR changes to ensure fresh renders
-            const cacheKey = slr > 0 ? `&v=${Math.round(slr * 100)}` : '';
-            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?slr=${slr}${cacheKey}`;
+            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}`;
 
-            // Update source efficiently: if exists, rebuild only the source
-            const ensureSource = () => {
-                if (!map.getSource("flood-raster")) {
-                    map.addSource("flood-raster", {
-                        type: "raster",
-                        tiles: [tileUrl],
-                        tileSize: 256,
-                    });
-                } else {
-                    if (map.getLayer("flood-raster-layer")) map.removeLayer("flood-raster-layer");
-                    map.removeSource("flood-raster");
-                    map.addSource("flood-raster", {
-                        type: "raster",
-                        tiles: [tileUrl],
-                        tileSize: 256,
-                    });
-                }
-            };
+            const hasSlr = resolvedSlr != null && resolvedSlr > 0;
+            const desiredOpacity = hasSlr ? 0.7 : 0.0;
+            const source = map.getSource("flood-raster");
 
-            // If SLR is 0 or less, avoid unnecessary source rebuilds; keep tiles hidden
-            if (slr > 0) {
-                ensureSource();
-            }
-            const desiredOpacity = slr > 0 ? 0.7 : 0.0;
-            if (!map.getLayer("flood-raster-layer")) {
+            if (source) {
+                source.setTiles([tileUrl]);
+                map.setPaintProperty("flood-raster-layer", "raster-opacity", desiredOpacity);
+            } else if (hasSlr) {
+                map.addSource("flood-raster", {
+                    type: "raster",
+                    tiles: [tileUrl],
+                    tileSize: 256,
+                });
                 map.addLayer({
                     id: "flood-raster-layer",
                     type: "raster",
@@ -254,8 +239,6 @@ export default function MapView({ floodData, bbox, slr, onBoundsChange, pending,
                         "raster-opacity": desiredOpacity,
                     },
                 }, map.getLayer("labels-layer") ? "labels-layer" : undefined);
-            } else {
-                map.setPaintProperty("flood-raster-layer", "raster-opacity", desiredOpacity);
             }
         };
 
@@ -268,7 +251,7 @@ export default function MapView({ floodData, bbox, slr, onBoundsChange, pending,
             };
             map.on('load', onLoad);
         }
-    }, [slr]);
+    }, [scenario, year, percentile, resolvedSlr]);
 
     return (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>

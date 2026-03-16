@@ -9,4 +9,5 @@ numpy
 mercantile
 Pillow
 requests
+scipy
 # dilluviumdem  # install from your local source if needed

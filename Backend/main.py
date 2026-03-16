@@ -14,10 +14,14 @@ from PIL import Image
 import math
 import io
 from functools import lru_cache
+from collections import defaultdict
 from rasterio.warp import reproject, Resampling
 from affine import Affine
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+
+import projection
+import vlm
 
 
 app = FastAPI()
@@ -39,11 +43,14 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(POPULATION_DATA_DIR, exist_ok=True)
 
 # In-memory caches
-ANALYSIS_CACHE_SIZE = 128
-TILE_CACHE_SIZE = 64  # Reduced from 512 to prevent OOM with reprojected tiles
+ANALYSIS_CACHE_SIZE = 256
+TILE_CACHE_SIZE = 512  # Safe with windowed reads (cached PNGs are ~1-10KB each)
 
 # Spatial tile index: {tile_name: {"bounds": (lon_min, lat_min, lon_max, lat_max), "path": ...}}
 TILE_INDEX: Dict[str, Dict] = {}
+
+# Grid-based spatial index for O(1) tile lookup (keyed by integer degree cell)
+TILE_GRID: Dict[Tuple[int, int], List[str]] = defaultdict(list)
 
 # WorldPop population raster datasets (support multiple GeoTIFFs for cross-border sampling)
 POPULATION_DATASET = None  # legacy single-file support
@@ -94,14 +101,15 @@ def parse_dem_filename(filename: str) -> Dict:
 
 
 def build_tile_index():
-    """Build spatial index of all DEM tiles in DATA_DIR."""
-    global TILE_INDEX
+    """Build spatial index of all DEM tiles in DATA_DIR with grid-based lookup."""
+    global TILE_INDEX, TILE_GRID
     TILE_INDEX = {}
-    
+    TILE_GRID = defaultdict(list)
+
     for filename in os.listdir(DATA_DIR):
         if not (filename.endswith('.tif') or filename.endswith('.tiff')):
             continue
-        
+
         tile_info = parse_dem_filename(filename)
         if tile_info:
             tile_name = os.path.splitext(filename)[0]
@@ -113,8 +121,12 @@ def build_tile_index():
                 "lon_max": tile_info["lon_max"],
                 "path": os.path.join(DATA_DIR, filename)
             }
-    
-    print(f"Built spatial index with {len(TILE_INDEX)} tiles")
+            # Insert into all grid cells this tile overlaps (1° x 1° cells)
+            for lat_cell in range(math.floor(tile_info["lat_min"]), math.ceil(tile_info["lat_max"])):
+                for lon_cell in range(math.floor(tile_info["lon_min"]), math.ceil(tile_info["lon_max"])):
+                    TILE_GRID[(lat_cell, lon_cell)].append(tile_name)
+
+    print(f"Built spatial index with {len(TILE_INDEX)} tiles, {len(TILE_GRID)} grid cells")
     return TILE_INDEX
 
 
@@ -221,32 +233,49 @@ async def timing_logger(request, call_next):
 
 
 def find_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> List[str]:
-    """Find all DEM tiles that intersect the given bounding box.
-    
-    Args:
-        lon_min, lat_min, lon_max, lat_max: bbox in decimal degrees (EPSG:4326)
-    
-    Returns:
-        List of tile names that intersect the bbox
+    """Find all DEM tiles that intersect the given bounding box using grid index.
+
+    O(k) where k = number of matching tiles, instead of O(n) scanning all 6000+ tiles.
     """
-    intersecting = []
-    
-    for tile_name, tile_info in TILE_INDEX.items():
-        t_lon_min, t_lat_min, t_lon_max, t_lat_max = tile_info["bounds"]
-        
-        # Check for bbox intersection
-        if not (lon_max < t_lon_min or lon_min > t_lon_max or 
-                lat_max < t_lat_min or lat_min > t_lat_max):
-            intersecting.append(tile_name)
-    
-    return intersecting
+    results = []
+    seen = set()
+
+    # Check all grid cells the bbox could overlap (with 1-cell margin for safety)
+    lat_start = math.floor(lat_min) - 1
+    lat_end = math.floor(lat_max) + 1
+    lon_start = math.floor(lon_min) - 1
+    lon_end = math.floor(lon_max) + 1
+
+    for lat_cell in range(lat_start, lat_end + 1):
+        for lon_cell in range(lon_start, lon_end + 1):
+            for tile_name in TILE_GRID.get((lat_cell, lon_cell), []):
+                if tile_name in seen:
+                    continue
+                seen.add(tile_name)
+                t = TILE_INDEX[tile_name]
+                t_lon_min, t_lat_min, t_lon_max, t_lat_max = t["bounds"]
+                # Exact intersection check
+                if not (lon_max < t_lon_min or lon_min > t_lon_max or
+                        lat_max < t_lat_min or lat_min > t_lat_max):
+                    results.append(tile_name)
+
+    return results
 
 
 @app.on_event("startup")
 def startup_event():
-    """Build tile index and load population data on startup."""
+    """Build tile index, load population data, projections, and VLM on startup."""
     build_tile_index()
     load_population_data()
+
+    # IPCC AR6 projections (optional — falls back to embedded global mean)
+    proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
+    projection.load_projections(proj_path)
+
+    # Vertical land motion corrections (optional — falls back to 0)
+    gia_path = os.path.join(BASE_DIR, "data", "ice6g_vlm.json")
+    gps_path = os.path.join(BASE_DIR, "data", "midas_vlm.json")
+    vlm.load_vlm(gia_path=gia_path, gps_path=gps_path)
 
 
 @app.get("/tiles/info")
@@ -277,6 +306,20 @@ def debug_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max:
 def list_cities():
     """Deprecated: city-based model removed. Returns empty list for compatibility."""
     return {"cities": []}
+
+
+# Cached transparent tile (avoid regenerating for every empty/no-data tile)
+_TRANSPARENT_TILE_PNG = None
+
+def _get_transparent_tile(size: int = 256) -> bytes:
+    """Return a cached fully-transparent 256x256 PNG."""
+    global _TRANSPARENT_TILE_PNG
+    if _TRANSPARENT_TILE_PNG is None:
+        rgba = np.zeros((size, size, 4), dtype=np.uint8)
+        buf = io.BytesIO()
+        Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
+        _TRANSPARENT_TILE_PNG = buf.getvalue()
+    return _TRANSPARENT_TILE_PNG
 
 
 def generate_flood_raster(dem_path: str, slr_meters: float, out_path: str):
@@ -376,73 +419,66 @@ def render_tile_png_multi_cached(tile_paths_tuple: Tuple[str, ...], slr_meters: 
     return render_tile_png_multi(list(tile_paths_tuple), slr_meters, z, x, y, size)
 
 def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: int, y: int, size: int = 256) -> bytes:
-    """Render a PNG tile from multiple DEM tiles, mosaicking as needed.
-    
-    Args:
-        tile_paths: List of DEM file paths that intersect this tile
-        slr_meters: Sea level rise threshold
-        z, x, y: Web Mercator tile coordinates
-        size: Output tile size in pixels
-    
-    Returns:
-        PNG bytes (RGBA with transparent dry areas, blue flooded areas)
-    """
-    # If SLR is <= 0, render transparent (no flooding)
-    if slr_meters <= 0:
-        rgba = np.zeros((size, size, 4), dtype=np.uint8)
-        buf = io.BytesIO()
-        Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-        return buf.getvalue()
+    """Render a flood overlay PNG tile using windowed DEM reads.
 
-    if not tile_paths:
-        # No data for this tile, return transparent
-        rgba = np.zeros((size, size, 4), dtype=np.uint8)
-        buf = io.BytesIO()
-        Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-        return buf.getvalue()
-    
-    # Get tile bounds in WebMercator meters (EPSG:3857)
+    Uses windowed reads to only load the portion of each DEM that intersects
+    the requested map tile, dramatically reducing I/O and memory usage.
+    """
+    if slr_meters <= 0 or not tile_paths:
+        return _get_transparent_tile(size)
+
+    # Map tile bounds in lat/lon (for DEM window reads) and Web Mercator (for output grid)
+    b = mercantile.bounds(x, y, z)
     wm = mercantile.xy_bounds(x, y, z)
-    tile_left, tile_bottom, tile_right, tile_top = wm.left, wm.bottom, wm.right, wm.top
-    
+
     try:
-        # Open all intersecting DEMs
-        datasets = []
-        for path in tile_paths:
-            try:
-                datasets.append(rasterio.open(path))
-            except Exception:
-                continue
-        
-        if not datasets:
-            rgba = np.zeros((size, size, 4), dtype=np.uint8)
-            buf = io.BytesIO()
-            Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-            return buf.getvalue()
-        
-        # Mosaic the tiles (source CRS assumed to be EPSG:4326 / geographic)
-        if len(datasets) == 1:
-            src = datasets[0]
-            mosaic_arr = src.read(1)
-            mosaic_transform = src.transform
-            nodata = src.nodata
-            src_crs = src.crs
+        if len(tile_paths) == 1:
+            # Single DEM tile: windowed read of just the intersecting region
+            with rasterio.open(tile_paths[0]) as src:
+                left = max(b.west, src.bounds.left)
+                right = min(b.east, src.bounds.right)
+                bottom = max(b.south, src.bounds.bottom)
+                top = min(b.north, src.bounds.top)
+
+                if left >= right or bottom >= top:
+                    return _get_transparent_tile(size)
+
+                window = from_bounds(left, bottom, right, top, transform=src.transform)
+                mosaic_arr = src.read(1, window=window)
+                mosaic_transform = src.window_transform(window)
+                nodata = src.nodata
+                src_crs = src.crs
         else:
-            mosaic_arr, mosaic_transform = merge(datasets)
-            mosaic_arr = mosaic_arr[0]  # merge returns (bands, height, width)
-            nodata = datasets[0].nodata
-            src_crs = datasets[0].crs
-        
-        # Prepare destination grid in EPSG:3857 aligned to requested tile
-        dst_crs = 'EPSG:3857'
+            # Multiple DEM tiles: merge with bounds= to limit output to map tile extent
+            datasets = []
+            try:
+                for path in tile_paths:
+                    try:
+                        datasets.append(rasterio.open(path))
+                    except Exception:
+                        continue
+                if not datasets:
+                    return _get_transparent_tile(size)
+
+                merge_bounds = (b.west, b.south, b.east, b.north)
+                mosaic_arr, mosaic_transform = merge(datasets, bounds=merge_bounds)
+                mosaic_arr = mosaic_arr[0]  # merge returns (bands, h, w)
+                nodata = datasets[0].nodata
+                src_crs = datasets[0].crs
+            finally:
+                for ds in datasets:
+                    try:
+                        ds.close()
+                    except Exception:
+                        pass
+
+        # Reproject windowed source to EPSG:3857 output grid
         dst_transform = Affine(
-            (tile_right - tile_left) / size, 0.0, tile_left,
-            0.0, -(tile_top - tile_bottom) / size, tile_top
+            (wm.right - wm.left) / size, 0.0, wm.left,
+            0.0, -(wm.top - wm.bottom) / size, wm.top
         )
         dst_arr = np.zeros((size, size), dtype=np.float32)
-        dst_nodata = np.nan
-        
-        # Reproject source mosaic to destination grid (NEAREST for categorical thresholding)
+
         reproject(
             source=mosaic_arr,
             destination=dst_arr,
@@ -450,92 +486,190 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
             src_crs=src_crs,
             src_nodata=nodata if nodata is not None else None,
             dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            dst_nodata=dst_nodata,
+            dst_crs='EPSG:3857',
+            dst_nodata=np.nan,
             resampling=Resampling.nearest
         )
-        
-        # Compute flood mask in destination grid
-        finite = np.isfinite(dst_arr)
-        flooded = np.logical_and(finite, dst_arr < float(slr_meters))
-        
-        rgba = np.zeros((size, size, 4), dtype=np.uint8)
-        if flooded.size > 0:
-            rgba[flooded] = [0, 0, 255, 160]
-        
-        # Close all datasets
-        for ds in datasets:
-            try:
-                ds.close()
-            except Exception:
-                pass
-        
-        # Explicitly delete large arrays to help GC
+
         del mosaic_arr
+
+        # Compute flood mask
+        finite = np.isfinite(dst_arr)
+        flooded = finite & (dst_arr < float(slr_meters))
+
         del dst_arr
-        
-        buf = io.BytesIO()
-        Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-        return buf.getvalue()
-        
-    except Exception:
-        # Clean up on error
-        try:
-            for ds in datasets:
-                ds.close()
-        except Exception:
-            pass
+
+        if not np.any(flooded):
+            return _get_transparent_tile(size)
+
         rgba = np.zeros((size, size, 4), dtype=np.uint8)
+        rgba[flooded] = [0, 0, 255, 160]
+
         buf = io.BytesIO()
         Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
         return buf.getvalue()
+
+    except Exception:
+        return _get_transparent_tile(size)
 
 
 @app.get("/tiles/{z}/{x}/{y}")
-def get_tile(z: int, x: int, y: int, slr: float = 1.0):
-    """Return a PNG tile for specified z/x/y WebMercator tile index.
-    
-    Automatically finds and mosaics all DEM tiles that intersect this map tile.
+def get_tile(z: int, x: int, y: int,
+             slr: Optional[float] = None,
+             scenario: Optional[str] = None,
+             year: Optional[int] = None,
+             pct: int = 50):
+    """Return a PNG flood overlay tile for z/x/y.
+
+    Two modes:
+      - Legacy: ?slr=1.0 (direct SLR value)
+      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved per-tile from IPCC + VLM)
     """
-    # Get tile bounds
     b = mercantile.bounds(x, y, z)
-    
-    # Find intersecting DEM tiles
+
+    # Resolve effective SLR
+    if slr is not None:
+        slr_meters = slr
+    elif scenario and year:
+        center_lat = (b.south + b.north) / 2
+        center_lon = (b.west + b.east) / 2
+        base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
+        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year)
+        slr_meters = (base_slr or 0.0) + vlm_offset
+    else:
+        slr_meters = 1.0  # default fallback
+
     tile_names = find_tiles_in_bbox(b.west, b.south, b.east, b.north)
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names if name in TILE_INDEX]
 
     try:
-        # Use cached wrapper with hashable tuple to avoid 240s+ repeated reprojections
-        png_bytes = render_tile_png_multi_cached(tuple(tile_paths), slr, z, x, y)
+        png_bytes = render_tile_png_multi_cached(tuple(tile_paths), round(slr_meters, 3), z, x, y)
         return Response(
-            content=png_bytes, 
+            content=png_bytes,
             media_type="image/png",
             headers={
-                "Cache-Control": "public, max-age=3600",  # Browser cache for 1 hour
-                "X-Tiles-Used": str(len(tile_paths))
+                "Cache-Control": "public, max-age=3600",
+                "X-Tiles-Used": str(len(tile_paths)),
+                "X-Effective-SLR": f"{slr_meters:.3f}",
             }
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tile rendering error: {e}")
-@app.get("/analyze_region")
-def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: float, 
-                   slr: float, sample_limit: int = 100):
-    """Analyze a geographic region for flood risk with SLR.
-    
-    Args:
-        lon_min, lat_min, lon_max, lat_max: Bounding box in decimal degrees (EPSG:4326)
-        slr: Sea level rise in meters
-        sample_limit: Maximum flooded pixels to sample for visualization
-    
-    Returns:
-        JSON with flood statistics and sampled flooded pixel coordinates
+def batch_sample_population(coords: np.ndarray) -> float:
+    """Sample population at multiple coordinates using batch windowed reads.
+
+    Instead of N individual rasterio reads (one per pixel), does ~1 batch read
+    per population raster. coords is Nx2 array of (lon, lat).
     """
-    # Find all tiles intersecting the region
+    if coords.size == 0 or (not POPULATION_RASTERS and POPULATION_DATASET is None):
+        return 0.0
+
+    total = 0.0
+    remaining = np.ones(len(coords), dtype=bool)
+
+    for r in POPULATION_RASTERS:
+        l, b, rgt, t = r["bounds"]
+        ds = r["ds"]
+        transform = r["transform"]
+
+        lons = coords[:, 0]
+        lats = coords[:, 1]
+        in_bounds = remaining & (lons >= l) & (lons <= rgt) & (lats >= b) & (lats <= t)
+        if not np.any(in_bounds):
+            continue
+
+        try:
+            matched_lons = lons[in_bounds]
+            matched_lats = lats[in_bounds]
+            rows, cols = rowcol(transform, matched_lons.tolist(), matched_lats.tolist())
+            rows = np.array(rows)
+            cols = np.array(cols)
+
+            valid = (rows >= 0) & (rows < ds.height) & (cols >= 0) & (cols < ds.width)
+            if not np.any(valid):
+                continue
+
+            v_rows = rows[valid]
+            v_cols = cols[valid]
+
+            # Single windowed read covering all valid points
+            r_min, r_max = int(v_rows.min()), int(v_rows.max())
+            c_min, c_max = int(v_cols.min()), int(v_cols.max())
+            win = Window.from_slices((r_min, r_max + 1), (c_min, c_max + 1))
+            arr = ds.read(1, window=win)
+
+            local_rows = (v_rows - r_min).astype(int)
+            local_cols = (v_cols - c_min).astype(int)
+            values = arr[local_rows, local_cols]
+            good = np.isfinite(values) & (values > 0)
+            total += float(values[good].sum())
+
+            matched_indices = np.where(in_bounds)[0]
+            # Only mark consumed when pixel has actual data (not NoData/ocean)
+            remaining[matched_indices[valid][good]] = False
+        except Exception:
+            continue
+
+    # Fallback to single dataset for remaining points
+    if np.any(remaining) and POPULATION_DATASET is not None:
+        try:
+            rem_lons = coords[remaining, 0]
+            rem_lats = coords[remaining, 1]
+            rows, cols = rowcol(POPULATION_DATASET.transform, rem_lons.tolist(), rem_lats.tolist())
+            rows = np.array(rows)
+            cols = np.array(cols)
+            valid = (rows >= 0) & (rows < POPULATION_DATASET.height) & (cols >= 0) & (cols < POPULATION_DATASET.width)
+            if np.any(valid):
+                v_rows = rows[valid]
+                v_cols = cols[valid]
+                r_min, r_max = int(v_rows.min()), int(v_rows.max())
+                c_min, c_max = int(v_cols.min()), int(v_cols.max())
+                win = Window.from_slices((r_min, r_max + 1), (c_min, c_max + 1))
+                arr = POPULATION_DATASET.read(1, window=win)
+                local_rows = (v_rows - r_min).astype(int)
+                local_cols = (v_cols - c_min).astype(int)
+                values = arr[local_rows, local_cols]
+                good = np.isfinite(values) & (values > 0)
+                total += float(values[good].sum())
+        except Exception:
+            pass
+
+    return total
+
+
+@app.get("/analyze_region")
+def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: float,
+                   slr: Optional[float] = None,
+                   scenario: Optional[str] = None,
+                   year: Optional[int] = None,
+                   pct: int = 50,
+                   sample_limit: int = 100):
+    """Analyze a geographic region for flood risk with SLR.
+
+    Two modes:
+      - Legacy: ?slr=1.0
+      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved from IPCC + VLM)
+    """
+    # Resolve effective SLR for the region center
+    center_lat = (lat_min + lat_max) / 2
+    center_lon = (lon_min + lon_max) / 2
+
+    if slr is not None:
+        effective_slr = slr
+    elif scenario and year:
+        base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
+        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year)
+        effective_slr = (base_slr or 0.0) + vlm_offset
+    else:
+        effective_slr = 1.0
+
+    slr = effective_slr
+
     tile_names = find_tiles_in_bbox(lon_min, lat_min, lon_max, lat_max)
-    
+
     if not tile_names:
         raise HTTPException(status_code=404, detail="No DEM data available for this region")
-    
+
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names]
 
     try:
@@ -559,7 +693,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                 "flooded_pixels": [],
                 "estimated_population_affected": 0,
             }
-        # Iterate tiles and read only intersecting windows to avoid huge mosaics
+        # Iterate tiles and read only intersecting windows
         elev_min = None
         elev_max = None
         elev_sum = 0.0
@@ -567,6 +701,15 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
         flooded_count = 0
         flooded_pixels = []
         population_affected = 0.0
+        has_pop_data = bool(POPULATION_RASTERS) or POPULATION_DATASET is not None
+
+        # Pre-filter population rasters to those intersecting the request bbox
+        bbox_pop_rasters = []
+        if has_pop_data:
+            for r in POPULATION_RASTERS:
+                pl, pb, pr, pt = r["bounds"]
+                if not (lon_max < pl or lon_min > pr or lat_max < pb or lat_min > pt):
+                    bbox_pop_rasters.append(r)
 
         for path in tile_paths:
             try:
@@ -600,38 +743,63 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                     elev_sum += cur_sum
                     valid_count += cur_count
 
-                    # Flood mask and sampling
+                    # Flood mask
                     flooded = np.logical_and(finite, arr < float(slr))
                     flooded_count += int(np.sum(flooded))
-                    
-                    # Estimate population affected using WorldPop data (multi-raster cross-border)
-                    if np.any(flooded) and (POPULATION_RASTERS or POPULATION_DATASET is not None):
-                        try:
-                            fy, fx = np.where(flooded)
-                            # Limit population sampling to avoid timeout on large regions
-                            max_pop_samples = 5000
-                            if len(fy) > max_pop_samples:
-                                sample_idx = np.random.choice(len(fy), max_pop_samples, replace=False)
-                                fy, fx = fy[sample_idx], fx[sample_idx]
-                            xs, ys = xy(src.transform, fy + window.row_off, fx + window.col_off)
-                            for px, py in zip(xs, ys):
-                                population_affected += sample_population_at(px, py)
-                        except Exception:
-                            pass
-                    
-                    # Fallback: use heuristic if no WorldPop available
-                    if not POPULATION_RASTERS and POPULATION_DATASET is None and np.any(flooded):
+
+                    # Population: iterate at WorldPop resolution (~1km)
+                    # For each populated WorldPop pixel in this DEM window,
+                    # check if the DEM says it's flooded at that location.
+                    if np.any(flooded) and bbox_pop_rasters:
+                        win_transform = src.window_transform(window)
+                        for r in bbox_pop_rasters:
+                            pl, pb, pr, pt = r["bounds"]
+                            il = max(left, pl)
+                            ir = min(right, pr)
+                            ib = max(bottom, pb)
+                            it = min(top, pt)
+                            if il >= ir or ib >= it:
+                                continue
+                            try:
+                                pop_win = from_bounds(il, ib, ir, it, transform=r["transform"])
+                                pop_arr = r["ds"].read(1, window=pop_win)
+                            except Exception:
+                                continue
+                            populated = np.isfinite(pop_arr) & (pop_arr > 0)
+                            prows, pcols = np.where(populated)
+                            if len(prows) == 0:
+                                continue
+                            # Global row/col for coordinate lookup
+                            g_rows = prows + int(round(pop_win.row_off))
+                            g_cols = pcols + int(round(pop_win.col_off))
+                            # Geographic coordinates of pop pixel centers
+                            pxs, pys = xy(r["transform"], g_rows.tolist(), g_cols.tolist())
+                            # Convert to DEM window row/col
+                            d_rows, d_cols = rowcol(win_transform, pxs, pys)
+                            d_rows = np.array(d_rows)
+                            d_cols = np.array(d_cols)
+                            # Filter to valid DEM indices
+                            valid_dem = (d_rows >= 0) & (d_rows < arr.shape[0]) & \
+                                        (d_cols >= 0) & (d_cols < arr.shape[1])
+                            if not np.any(valid_dem):
+                                continue
+                            # Check flood status at each pop pixel center
+                            vr = d_rows[valid_dem].astype(int)
+                            vc = d_cols[valid_dem].astype(int)
+                            is_flood = flooded[vr, vc]
+                            # Sum population of flooded pop pixels
+                            pop_vals = pop_arr[prows[valid_dem], pcols[valid_dem]]
+                            population_affected += float(pop_vals[is_flood].sum())
+
+                    # Heuristic fallback when no WorldPop data (vectorized)
+                    if not has_pop_data and np.any(flooded):
                         flooded_vals = arr[flooded]
                         pixel_area_km2 = 0.0009
-                        for elev_val in flooded_vals:
-                            if elev_val < 10.0:
-                                density = 500
-                            elif elev_val < 50.0:
-                                density = 200
-                            else:
-                                density = 50
-                            population_affected += density * pixel_area_km2
-                    
+                        densities = np.where(flooded_vals < 10.0, 500,
+                                    np.where(flooded_vals < 50.0, 200, 50))
+                        population_affected += float(np.sum(densities)) * pixel_area_km2
+
+                    # Sample flooded pixels for visualization
                     if len(flooded_pixels) < sample_limit and np.any(flooded):
                         rows, cols = np.where(flooded)
                         remaining = sample_limit - len(flooded_pixels)
@@ -661,6 +829,9 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                 "lat_max": lat_max
             },
             "slr": float(slr),
+            "scenario": scenario,
+            "year": year,
+            "percentile": pct,
             "tiles_used": tile_names,
             "crs": "EPSG:4326",
             "elevation_min": elev_min,
@@ -672,7 +843,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
             "flooded_pixels": flooded_pixels,
             "estimated_population_affected": int(population_affected),
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
@@ -770,3 +941,45 @@ def analyze(city: str, slr: float, sample_limit: int = 500, include_points: bool
     result["city"] = city
     result["slr"] = float(slr)
     return result
+
+
+@app.get("/resolve_slr")
+def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
+                         year: int, pct: int = 50):
+    """Resolve effective SLR for a location under a given scenario.
+
+    Returns IPCC regional projection + VLM correction combined.
+    """
+    base_slr = projection.resolve_slr(lat, lon, scenario, year, pct)
+    if base_slr is None:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid scenario '{scenario}' or percentile {pct}")
+
+    vlm_offset = vlm.resolve_vlm_offset(lat, lon, year)
+    vlm_info = vlm.get_vlm_info(lat, lon)
+
+    return {
+        "slr_meters": round(base_slr + vlm_offset, 4),
+        "ipcc_slr_meters": round(base_slr, 4),
+        "vlm_offset_meters": round(vlm_offset, 4),
+        "vlm_rate_mm_yr": vlm_info["vlm_mm_yr"],
+        "vlm_source": vlm_info["source"],
+        "projection_source": "regional" if projection.is_loaded() else "global_mean",
+        "scenario": scenario,
+        "year": year,
+        "percentile": pct,
+        "lat": lat,
+        "lon": lon,
+    }
+
+
+@app.get("/projection_info")
+def projection_info(lat: Optional[float] = None, lon: Optional[float] = None):
+    """Return available scenario metadata, optionally with full projection curves."""
+    info = projection.get_available_info()
+
+    if lat is not None and lon is not None:
+        info["projection_at"] = projection.get_projection_at(lat, lon)
+        info["vlm"] = vlm.get_vlm_info(lat, lon)
+
+    return info

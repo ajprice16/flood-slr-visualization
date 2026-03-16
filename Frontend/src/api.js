@@ -40,9 +40,10 @@ async function fetchWithMeta(url, options) {
     return { data, status: res.status, ok: res.ok, durationMs };
 }
 
-export async function analyzeRegion(bbox, slr, options = {}) {
+export async function analyzeRegion(bbox, params, options = {}) {
     const { lon_min, lat_min, lon_max, lat_max } = bbox;
-    const url = `${API}/analyze_region?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&slr=${slr}`;
+    const { scenario, year, percentile } = params;
+    const url = `${API}/analyze_region?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&scenario=${scenario}&year=${year}&pct=${percentile}`;
     const maxAttempts = 3;
     let attempt = 0;
     let lastError = null;
@@ -67,4 +68,16 @@ export async function analyzeRegion(bbox, slr, options = {}) {
         }
     }
     throw lastError || new Error('Unknown fetch failure');
+}
+
+export async function fetchResolvedSlr(lat, lon, scenario, year, pct = 50) {
+    const url = `${API}/resolve_slr?lat=${lat}&lon=${lon}&scenario=${scenario}&year=${year}&pct=${pct}`;
+    return await fetchWithMeta(url, { method: 'GET', timeoutMs: 5000 });
+}
+
+export async function fetchProjectionInfo(lat, lon) {
+    const url = lat != null && lon != null
+        ? `${API}/projection_info?lat=${lat}&lon=${lon}`
+        : `${API}/projection_info`;
+    return await fetchWithMeta(url, { method: 'GET', timeoutMs: 5000 });
 }

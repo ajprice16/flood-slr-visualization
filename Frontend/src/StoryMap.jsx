@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 
-export default function StoryMap({ stories, currentIndex, onNavigate, onClose }) {
+const SCENARIO_LABELS = {
+    ssp126: "SSP1-2.6 (Very Low)",
+    ssp245: "SSP2-4.5 (Intermediate)",
+    ssp370: "SSP3-7.0 (High)",
+    ssp585: "SSP5-8.5 (Very High)",
+};
+
+export default function StoryMap({ stories, currentIndex, onNavigate, onClose, scenario, year, percentile, resolvedSlr }) {
     const [content, setContent] = useState("");
     const [loading, setLoading] = useState(false);
     const story = stories[currentIndex];
@@ -101,6 +108,24 @@ export default function StoryMap({ stories, currentIndex, onNavigate, onClose })
                     <p style={{ color: "#999" }}>Loading...</p>
                 ) : (
                     <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>
+                )}
+            </div>
+
+            {/* Scenario Info */}
+            <div style={{
+                padding: "12px 20px",
+                borderTop: "1px solid #eee",
+                background: "#f0f7ff",
+                fontSize: "13px"
+            }}>
+                <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+                    {SCENARIO_LABELS[scenario] || scenario} — {year}
+                </div>
+                {resolvedSlr && (
+                    <div style={{ fontSize: "12px", color: "#555" }}>
+                        <div>Effective SLR: {resolvedSlr.slr_meters?.toFixed(2)}m ({percentile}th percentile)</div>
+                        <div>IPCC: {resolvedSlr.ipcc_slr_meters?.toFixed(2)}m | VLM: {resolvedSlr.vlm_offset_meters > 0 ? "+" : ""}{resolvedSlr.vlm_offset_meters?.toFixed(3)}m</div>
+                    </div>
                 )}
             </div>
 

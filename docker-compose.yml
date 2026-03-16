@@ -10,8 +10,9 @@ services:
       - ./Backend/dem:/app/dem:ro
       - ./Backend/wp_2020:/app/wp_2020:ro
       - ./Backend/tile_cache:/app/tile_cache
+      - ./Backend/data:/app/data:ro
     environment:
-      - TILE_CACHE_SIZE=64
+      - TILE_CACHE_SIZE=512
     restart: unless-stopped
     networks:
       slr-net:
