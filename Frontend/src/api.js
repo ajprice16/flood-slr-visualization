@@ -21,7 +21,37 @@ async function fetchWithMeta(url, options) {
     const timeoutMs = (options && options.timeoutMs) ? options.timeoutMs : 15000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, { ...(options || {}), signal: controller.signal }).finally(() => clearTimeout(timer));
+
+    // Propagate an external abort signal (e.g. from the caller's AbortController)
+    // so that user-initiated cancellations (map pan/zoom) actually stop the fetch.
+    const externalSignal = options && options.signal;
+    // Named handler so we can remove it in the finally block, preventing
+    // listener accumulation when the same externalSignal is reused across retries.
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', onExternalAbort);
+        }
+    }
+
+    const fetchOptions = { ...(options || {}), signal: controller.signal };
+    delete fetchOptions.timeoutMs;  // timeoutMs is our custom option, not a valid fetch() init key
+    // signal is already set to controller.signal above; no further action needed
+
+    let res;
+    try {
+        res = await fetch(url, fetchOptions);
+    } finally {
+        clearTimeout(timer);
+        // Always remove the external abort listener so it doesn't accumulate
+        // across retries or outlive this fetch attempt.
+        if (externalSignal) {
+            externalSignal.removeEventListener('abort', onExternalAbort);
+        }
+    }
+
     const durationMs = performance.now() - start;
     const contentType = res.headers.get('content-type') || '';
     let data = null;

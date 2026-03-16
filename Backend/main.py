@@ -1,4 +1,5 @@
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
@@ -8,7 +9,6 @@ from rasterio.windows import from_bounds, Window
 from rasterio.transform import xy, rowcol
 import numpy as np
 import os
-import tempfile
 import mercantile
 from PIL import Image
 import math
@@ -24,7 +24,25 @@ import projection
 import vlm
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Build tile index, load population data, projections, and VLM on startup."""
+    build_tile_index()
+    load_population_data()
+
+    # IPCC AR6 projections (optional — falls back to embedded global mean)
+    proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
+    projection.load_projections(proj_path)
+
+    # Vertical land motion corrections (optional — falls back to 0)
+    gia_path = os.path.join(BASE_DIR, "data", "ice6g_vlm.json")
+    gps_path = os.path.join(BASE_DIR, "data", "midas_vlm.json")
+    vlm.load_vlm(gia_path=gia_path, gps_path=gps_path)
+
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,7 +62,14 @@ os.makedirs(POPULATION_DATA_DIR, exist_ok=True)
 
 # In-memory caches
 ANALYSIS_CACHE_SIZE = 256
-TILE_CACHE_SIZE = 512  # Safe with windowed reads (cached PNGs are ~1-10KB each)
+try:
+    TILE_CACHE_SIZE = int(os.environ.get("TILE_CACHE_SIZE", 512))  # configurable via env var
+except (ValueError, TypeError):
+    TILE_CACHE_SIZE = 512
+TILE_CACHE_SIZE = max(1, TILE_CACHE_SIZE)
+
+# Web Mercator tile zoom bounds
+MAX_ZOOM_LEVEL = 22
 
 # Spatial tile index: {tile_name: {"bounds": (lon_min, lat_min, lon_max, lat_max), "path": ...}}
 TILE_INDEX: Dict[str, Dict] = {}
@@ -170,38 +195,6 @@ def load_population_data():
         print(f"  - {r['name']} bounds={r['bounds']} crs={r['crs']}")
     return loaded > 0
 
-def sample_population_at(lon: float, lat: float) -> float:
-    """Sample population value at a geographic coordinate from available rasters.
-    Sums overlapping rasters; returns 0.0 if no coverage.
-    """
-    val_sum = 0.0
-    # Prefer multi-raster list
-    for r in POPULATION_RASTERS:
-        l, b, rgt, t = r["bounds"]
-        if not (lon < l or lon > rgt or lat < b or lat > t):
-            try:
-                pop_row, pop_col = rowcol(r["transform"], lon, lat)
-                if 0 <= pop_row < r["ds"].height and 0 <= pop_col < r["ds"].width:
-                    win = Window.from_slices((pop_row, pop_row + 1), (pop_col, pop_col + 1))
-                    arr = r["ds"].read(1, window=win)
-                    v = float(arr[0, 0])
-                    if np.isfinite(v) and v > 0:
-                        val_sum += v
-            except Exception:
-                continue
-    # Fallback single dataset
-    if val_sum == 0.0 and POPULATION_DATASET is not None:
-        try:
-            pop_row, pop_col = rowcol(POPULATION_DATASET.transform, lon, lat)
-            if 0 <= pop_row < POPULATION_DATASET.height and 0 <= pop_col < POPULATION_DATASET.width:
-                win = Window.from_slices((pop_row, pop_row + 1), (pop_col, pop_col + 1))
-                arr = POPULATION_DATASET.read(1, window=win)
-                v = float(arr[0, 0])
-                if np.isfinite(v) and v > 0:
-                    val_sum += v
-        except Exception:
-            pass
-    return val_sum
 
 # Simple health endpoint
 @app.get("/health")
@@ -262,22 +255,6 @@ def find_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: 
     return results
 
 
-@app.on_event("startup")
-def startup_event():
-    """Build tile index, load population data, projections, and VLM on startup."""
-    build_tile_index()
-    load_population_data()
-
-    # IPCC AR6 projections (optional — falls back to embedded global mean)
-    proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
-    projection.load_projections(proj_path)
-
-    # Vertical land motion corrections (optional — falls back to 0)
-    gia_path = os.path.join(BASE_DIR, "data", "ice6g_vlm.json")
-    gps_path = os.path.join(BASE_DIR, "data", "midas_vlm.json")
-    vlm.load_vlm(gia_path=gia_path, gps_path=gps_path)
-
-
 @app.get("/tiles/info")
 def get_tile_info():
     """Get information about available DEM tiles."""
@@ -321,96 +298,6 @@ def _get_transparent_tile(size: int = 256) -> bytes:
         _TRANSPARENT_TILE_PNG = buf.getvalue()
     return _TRANSPARENT_TILE_PNG
 
-
-def generate_flood_raster(dem_path: str, slr_meters: float, out_path: str):
-    """
-    Create a binary flood GeoTIFF where cells with elevation < slr_meters are 1, else 0.
-    Writes a GeoTIFF to out_path with the same transform/CRS as the input dem.
-    """
-    with rasterio.open(dem_path) as src:
-        profile = src.profile.copy()
-        elevation = src.read(1)
-
-        # Create flood mask (1 = flooded, 0 = dry). Use nodata handling.
-        nodata = profile.get('nodata', None)
-        mask = np.zeros_like(elevation, dtype=np.uint8)
-        valid = np.ones_like(elevation, dtype=bool)
-        if nodata is not None:
-            valid = elevation != nodata
-
-        mask[np.logical_and(valid, elevation < slr_meters)] = 1
-
-        profile.update(dtype=rasterio.uint8, count=1, compress='lzw')
-
-        with rasterio.open(out_path, 'w', **profile) as dst:
-            dst.write(mask, 1)
-
-    return out_path
-
-
-@lru_cache(maxsize=TILE_CACHE_SIZE)
-def render_tile_png(dem_path: str, slr_meters: float, z: int, x: int, y: int, size: int = 256) -> bytes:
-    """Render a PNG tile (size x size) of flooded areas for given WebMercator z/x/y.
-
-    Flood definition: elevation < slr_meters AND finite (and not nodata if defined).
-    Output: RGBA PNG with transparent dry pixels and semi-transparent blue flooded pixels.
-    Cached with LRU policy.
-    """
-    with rasterio.open(dem_path) as src:
-        # Get tile bounds in WGS84 (mercantile gives lon/lat which matches EPSG:4326 of DEM)
-        b = mercantile.bounds(x, y, z)
-        tile_left, tile_bottom, tile_right, tile_top = b.west, b.south, b.east, b.north
-
-        # Dataset bounds
-        ds_left, ds_bottom, ds_right, ds_top = src.bounds.left, src.bounds.bottom, src.bounds.right, src.bounds.top
-
-        # Compute intersection
-        left = max(tile_left, ds_left)
-        right = min(tile_right, ds_right)
-        bottom = max(tile_bottom, ds_bottom)
-        top = min(tile_top, ds_top)
-
-        # If no intersection, return fully transparent tile
-        if left >= right or bottom >= top:
-            rgba = np.zeros((size, size, 4), dtype=np.uint8)
-            buf = io.BytesIO()
-            Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-            return buf.getvalue()
-
-        # Build window for intersecting bounds
-        window = from_bounds(left, bottom, right, top, transform=src.transform)
-        try:
-            elev = src.read(1, window=window, masked=True)
-        except Exception:
-            rgba = np.zeros((size, size, 4), dtype=np.uint8)
-            buf = io.BytesIO()
-            Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-            return buf.getvalue()
-
-        # Compute flood mask
-        arr = np.array(elev, copy=False)
-        nodata = src.nodata
-        finite = np.isfinite(arr)
-        if nodata is not None:
-            finite &= arr != nodata
-        flooded = np.logical_and(finite, arr < float(slr_meters))
-
-        # Resize mask to tile size
-        if flooded.size == 0:
-            rgba = np.zeros((size, size, 4), dtype=np.uint8)
-        else:
-            mask_u8 = flooded.astype(np.uint8) * 255
-            pil_mask = Image.fromarray(mask_u8, mode='L')
-            # Pillow 10 uses Image.Resampling; fallback to legacy constant if needed
-            resampling = Image.Resampling.NEAREST if hasattr(Image, 'Resampling') else 0  # 0 == NEAREST
-            pil_mask_resized = pil_mask.resize((size, size), resample=resampling)
-            mask_resized = np.array(pil_mask_resized)
-            rgba = np.zeros((size, size, 4), dtype=np.uint8)
-            rgba[mask_resized > 0] = [0, 0, 255, 160]  # semi-transparent blue
-
-        buf = io.BytesIO()
-        Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
-        return buf.getvalue()
 
 
 @lru_cache(maxsize=TILE_CACHE_SIZE)
@@ -532,6 +419,13 @@ def get_tile(z: int, x: int, y: int,
       - Legacy: ?slr=1.0 (direct SLR value)
       - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved per-tile from IPCC + VLM)
     """
+    # Validate tile coordinates
+    if z < 0 or z > MAX_ZOOM_LEVEL:
+        raise HTTPException(status_code=400, detail=f"Invalid zoom level {z}; must be 0-{MAX_ZOOM_LEVEL}")
+    max_xy = (1 << z) - 1
+    if x < 0 or x > max_xy or y < 0 or y > max_xy:
+        raise HTTPException(status_code=400, detail=f"Tile x/y out of range for zoom {z}")
+
     b = mercantile.bounds(x, y, z)
 
     # Resolve effective SLR
@@ -562,86 +456,6 @@ def get_tile(z: int, x: int, y: int,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tile rendering error: {e}")
-def batch_sample_population(coords: np.ndarray) -> float:
-    """Sample population at multiple coordinates using batch windowed reads.
-
-    Instead of N individual rasterio reads (one per pixel), does ~1 batch read
-    per population raster. coords is Nx2 array of (lon, lat).
-    """
-    if coords.size == 0 or (not POPULATION_RASTERS and POPULATION_DATASET is None):
-        return 0.0
-
-    total = 0.0
-    remaining = np.ones(len(coords), dtype=bool)
-
-    for r in POPULATION_RASTERS:
-        l, b, rgt, t = r["bounds"]
-        ds = r["ds"]
-        transform = r["transform"]
-
-        lons = coords[:, 0]
-        lats = coords[:, 1]
-        in_bounds = remaining & (lons >= l) & (lons <= rgt) & (lats >= b) & (lats <= t)
-        if not np.any(in_bounds):
-            continue
-
-        try:
-            matched_lons = lons[in_bounds]
-            matched_lats = lats[in_bounds]
-            rows, cols = rowcol(transform, matched_lons.tolist(), matched_lats.tolist())
-            rows = np.array(rows)
-            cols = np.array(cols)
-
-            valid = (rows >= 0) & (rows < ds.height) & (cols >= 0) & (cols < ds.width)
-            if not np.any(valid):
-                continue
-
-            v_rows = rows[valid]
-            v_cols = cols[valid]
-
-            # Single windowed read covering all valid points
-            r_min, r_max = int(v_rows.min()), int(v_rows.max())
-            c_min, c_max = int(v_cols.min()), int(v_cols.max())
-            win = Window.from_slices((r_min, r_max + 1), (c_min, c_max + 1))
-            arr = ds.read(1, window=win)
-
-            local_rows = (v_rows - r_min).astype(int)
-            local_cols = (v_cols - c_min).astype(int)
-            values = arr[local_rows, local_cols]
-            good = np.isfinite(values) & (values > 0)
-            total += float(values[good].sum())
-
-            matched_indices = np.where(in_bounds)[0]
-            # Only mark consumed when pixel has actual data (not NoData/ocean)
-            remaining[matched_indices[valid][good]] = False
-        except Exception:
-            continue
-
-    # Fallback to single dataset for remaining points
-    if np.any(remaining) and POPULATION_DATASET is not None:
-        try:
-            rem_lons = coords[remaining, 0]
-            rem_lats = coords[remaining, 1]
-            rows, cols = rowcol(POPULATION_DATASET.transform, rem_lons.tolist(), rem_lats.tolist())
-            rows = np.array(rows)
-            cols = np.array(cols)
-            valid = (rows >= 0) & (rows < POPULATION_DATASET.height) & (cols >= 0) & (cols < POPULATION_DATASET.width)
-            if np.any(valid):
-                v_rows = rows[valid]
-                v_cols = cols[valid]
-                r_min, r_max = int(v_rows.min()), int(v_rows.max())
-                c_min, c_max = int(v_cols.min()), int(v_cols.max())
-                win = Window.from_slices((r_min, r_max + 1), (c_min, c_max + 1))
-                arr = POPULATION_DATASET.read(1, window=win)
-                local_rows = (v_rows - r_min).astype(int)
-                local_cols = (v_cols - c_min).astype(int)
-                values = arr[local_rows, local_cols]
-                good = np.isfinite(values) & (values > 0)
-                total += float(values[good].sum())
-        except Exception:
-            pass
-
-    return total
 
 
 @app.get("/analyze_region")
@@ -670,8 +484,6 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
     else:
         effective_slr = 1.0
 
-    slr = effective_slr
-
     tile_names = find_tiles_in_bbox(lon_min, lat_min, lon_max, lat_max)
 
     if not tile_names:
@@ -680,7 +492,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names]
 
     try:
-        if slr <= 0:
+        if effective_slr <= 0:
             return {
                 "bbox": {
                     "lon_min": lon_min,
@@ -688,7 +500,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                     "lon_max": lon_max,
                     "lat_max": lat_max
                 },
-                "slr": float(slr),
+                "slr": float(effective_slr),
                 "tiles_used": tile_names,
                 "crs": "EPSG:4326",
                 "elevation_min": None,
@@ -751,7 +563,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                     valid_count += cur_count
 
                     # Flood mask
-                    flooded = np.logical_and(finite, arr < float(slr))
+                    flooded = np.logical_and(finite, arr < float(effective_slr))
                     flooded_count += int(np.sum(flooded))
 
                     # Population: iterate at WorldPop resolution (~1km)
@@ -835,7 +647,7 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
                 "lon_max": lon_max,
                 "lat_max": lat_max
             },
-            "slr": float(slr),
+            "slr": float(effective_slr),
             "scenario": scenario,
             "year": year,
             "percentile": pct,
