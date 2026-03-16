@@ -1,6 +1,7 @@
 
 import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
+import { escapeHtml } from "./utils";
 
 export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
@@ -28,6 +29,25 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
     }), []);
 
     useEffect(() => {
+        // Hoist bounds callbacks to effect scope so the cleanup closure can
+        // reference the exact same function objects that were registered.
+        const emitBoundsImmediate = () => {
+            if (!mapRef.current) return;
+            const b = mapRef.current.getBounds();
+            const bounds = {
+                lon_min: b.getWest(),
+                lat_min: b.getSouth(),
+                lon_max: b.getEast(),
+                lat_max: b.getNorth(),
+                zoom: mapRef.current.getZoom()
+            };
+            onBoundsChangeRef.current && onBoundsChangeRef.current(bounds);
+        };
+        const emitBoundsDebounced = () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            debounceRef.current = setTimeout(emitBoundsImmediate, 350);
+        };
+
         if (!mapRef.current) {
             mapRef.current = new maplibregl.Map({
                 container: mapContainer.current,
@@ -36,11 +56,11 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     sources: {},
                     layers: []
                 },
-                center: bbox ? [(bbox.lon_min + bbox.lon_max) / 2, (bbox.lat_min + bbox.lat_max) / 2] : [-80.19, 25.76],
-                zoom: bbox ? 9 : 9,
+                center: [-80.19, 25.76],
+                zoom: 9,
             });
-            // Emit bounds on load and on move end
             const map = mapRef.current;
+
             // Add satellite basemap (ESRI World Imagery)
             const addBasemap = () => {
                 if (!map.getSource('satellite')) {
@@ -107,18 +127,11 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     }
                 ];
 
-                const escapeHtml = (str) => str
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-
                 for (const city of cities) {
                     try {
                         const response = await fetch(city.textFile);
                         const description = await response.text();
-                        
+
                         const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
                             .setHTML(`<div style="padding: 8px; max-width: 250px;">
                                 <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">${escapeHtml(city.name)}</h3>
@@ -145,26 +158,26 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     addCityMarkers();
                 });
             }
-            const emitBoundsImmediate = () => {
-                const b = map.getBounds();
-                const bounds = {
-                    lon_min: b.getWest(),
-                    lat_min: b.getSouth(),
-                    lon_max: b.getEast(),
-                    lat_max: b.getNorth(),
-                    zoom: map.getZoom()
-                };
-                onBoundsChangeRef.current && onBoundsChangeRef.current(bounds);
-            };
-            const emitBoundsDebounced = () => {
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                debounceRef.current = setTimeout(() => {
-                    emitBoundsImmediate();
-                }, 350);
-            };
             map.on('load', emitBoundsImmediate);
             map.on('moveend', emitBoundsDebounced);
         }
+
+        // Cleanup: tear down map when component unmounts to release WebGL context,
+        // pending timers, and marker references.
+        return () => {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current);
+                debounceRef.current = null;
+            }
+            cityMarkersRef.current.forEach(marker => marker.remove());
+            cityMarkersRef.current = [];
+            if (mapRef.current) {
+                mapRef.current.off('load', emitBoundsImmediate);
+                mapRef.current.off('moveend', emitBoundsDebounced);
+                mapRef.current.remove();
+                mapRef.current = null;
+            }
+        };
     }, []);  // map is initialised once; onBoundsChange updates are tracked via ref
 
     // Update map view when bbox changes

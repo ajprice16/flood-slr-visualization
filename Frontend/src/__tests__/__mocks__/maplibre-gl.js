@@ -11,6 +11,7 @@ export const mapInstance = {
     addLayer: vi.fn(),
     removeSource: vi.fn(),
     removeLayer: vi.fn(),
+    remove: vi.fn(),
     getBounds: vi.fn(function() {
         return {
             getWest: function() { return -81; },
@@ -46,6 +47,7 @@ export class Marker {
     setLngLat() { return this; }
     setPopup() { return this; }
     addTo() { return this; }
+    remove() { return this; }
 }
 
 export default { Map, Popup, Marker };

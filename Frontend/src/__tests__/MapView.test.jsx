@@ -2,8 +2,9 @@
  * Tests for MapView.jsx
  *
  * maplibre-gl is mocked (no WebGL in jsdom).
- * Tests verify that the container div renders, that escapeHtml correctly
- * sanitises HTML special characters, and that the component mounts without errors.
+ * Tests verify that the container div renders, status overlays, and that the
+ * shared escapeHtml utility (used by MapView for popup content) sanitises HTML
+ * special characters correctly.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -17,6 +18,8 @@ vi.mock('maplibre-gl', () => import('./__mocks__/maplibre-gl.js'));
 global.fetch = vi.fn().mockResolvedValue({ text: () => Promise.resolve('City info text.') });
 
 import MapView from '../MapView';
+// Import the real escapeHtml used by MapView so tests verify the actual implementation.
+import { escapeHtml } from '../utils';
 
 describe('MapView', () => {
     it('renders without crashing', () => {
@@ -93,19 +96,8 @@ describe('MapView', () => {
 });
 
 // ---------------------------------------------------------------------------
-// escapeHtml — extracted and tested independently
+// escapeHtml — imported from the shared utils module used by MapView
 // ---------------------------------------------------------------------------
-
-// The escapeHtml function is defined inside MapView's component body so we
-// replicate it here exactly to verify its logic separately.
-function escapeHtml(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
 
 describe('escapeHtml', () => {
     it('escapes ampersands', () => {

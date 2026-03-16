@@ -62,7 +62,11 @@ os.makedirs(POPULATION_DATA_DIR, exist_ok=True)
 
 # In-memory caches
 ANALYSIS_CACHE_SIZE = 256
-TILE_CACHE_SIZE = int(os.environ.get("TILE_CACHE_SIZE", 512))  # configurable via env var
+try:
+    TILE_CACHE_SIZE = int(os.environ.get("TILE_CACHE_SIZE", 512))  # configurable via env var
+except (ValueError, TypeError):
+    TILE_CACHE_SIZE = 512
+TILE_CACHE_SIZE = max(1, TILE_CACHE_SIZE)
 
 # Web Mercator tile zoom bounds
 MAX_ZOOM_LEVEL = 22
