@@ -449,7 +449,9 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 nodata = src.nodata
                 src_crs = src.crs
         else:
-            # Multiple DEM tiles: merge with bounds= to limit output to map tile extent
+            # Multiple DEM tiles: merge with a small buffer beyond tile bounds so that
+            # pixels right at the 1°×1° DEM tile seam are captured from both neighbours,
+            # preventing a 1-pixel-wide nodata strip at the boundary.
             datasets = []
             try:
                 for path in tile_paths:
@@ -460,7 +462,10 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 if not datasets:
                     return _get_transparent_tile(size)
 
-                merge_bounds = (b.west, b.south, b.east, b.north)
+                # Buffer of ~0.01° (~1 km) ensures boundary pixels from adjacent tiles
+                # are included in the mosaic before reprojection clips back to tile extent.
+                _buf = 0.01
+                merge_bounds = (b.west - _buf, b.south - _buf, b.east + _buf, b.north + _buf)
                 mosaic_arr, mosaic_transform = merge(datasets, bounds=merge_bounds)
                 mosaic_arr = mosaic_arr[0]  # merge returns (bands, h, w)
                 nodata = datasets[0].nodata
@@ -472,12 +477,14 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                     except Exception:
                         pass
 
-        # Reproject windowed source to EPSG:3857 output grid
+        # Reproject windowed source to EPSG:3857 output grid.
+        # dst_arr initialised to NaN so any destination pixel not written by
+        # the warp (outside source coverage) is correctly treated as no-data.
         dst_transform = Affine(
             (wm.right - wm.left) / size, 0.0, wm.left,
             0.0, -(wm.top - wm.bottom) / size, wm.top
         )
-        dst_arr = np.zeros((size, size), dtype=np.float32)
+        dst_arr = np.full((size, size), np.nan, dtype=np.float32)
 
         reproject(
             source=mosaic_arr,
@@ -488,7 +495,7 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
             dst_transform=dst_transform,
             dst_crs='EPSG:3857',
             dst_nodata=np.nan,
-            resampling=Resampling.nearest
+            resampling=Resampling.bilinear  # bilinear gives smooth elevation at seams
         )
 
         del mosaic_arr
