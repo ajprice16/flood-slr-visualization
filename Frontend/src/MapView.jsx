@@ -6,6 +6,12 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
     const debounceRef = useRef(null);
+    const cityMarkersRef = useRef([]);  // keep references for potential future cleanup
+    // Keep a ref to the latest onBoundsChange callback so the map event listeners
+    // (registered once at init) always call the current version without needing
+    // to re-register on every render.
+    const onBoundsChangeRef = useRef(onBoundsChange);
+    useEffect(() => { onBoundsChangeRef.current = onBoundsChange; }, [onBoundsChange]);
 
     // Expose flyTo method to parent
     useImperativeHandle(externalMapRef, () => ({
@@ -101,6 +107,13 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     }
                 ];
 
+                const escapeHtml = (str) => str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+
                 for (const city of cities) {
                     try {
                         const response = await fetch(city.textFile);
@@ -108,14 +121,15 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                         
                         const popup = new maplibregl.Popup({ offset: 25, closeButton: true })
                             .setHTML(`<div style="padding: 8px; max-width: 250px;">
-                                <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">${city.name}</h3>
-                                <p style="margin: 0; font-size: 12px; line-height: 1.4;">${description}</p>
+                                <h3 style="margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">${escapeHtml(city.name)}</h3>
+                                <p style="margin: 0; font-size: 12px; line-height: 1.4;">${escapeHtml(description)}</p>
                             </div>`);
 
                         const marker = new maplibregl.Marker({ color: '#ff6b6b' })
                             .setLngLat(city.coords)
                             .setPopup(popup)
                             .addTo(map);
+                        cityMarkersRef.current.push(marker);
                     } catch (error) {
                         console.error(`Failed to load description for ${city.name}:`, error);
                     }
@@ -140,7 +154,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     lat_max: b.getNorth(),
                     zoom: map.getZoom()
                 };
-                onBoundsChange && onBoundsChange(bounds);
+                onBoundsChangeRef.current && onBoundsChangeRef.current(bounds);
             };
             const emitBoundsDebounced = () => {
                 if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -151,7 +165,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             map.on('load', emitBoundsImmediate);
             map.on('moveend', emitBoundsDebounced);
         }
-    }, [bbox, onBoundsChange]);
+    }, []);  // map is initialised once; onBoundsChange updates are tracked via ref
 
     // Update map view when bbox changes
     // Do not recenter on bbox changes; bbox is derived from map view.

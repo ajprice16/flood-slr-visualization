@@ -21,7 +21,21 @@ async function fetchWithMeta(url, options) {
     const timeoutMs = (options && options.timeoutMs) ? options.timeoutMs : 15000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, { ...(options || {}), signal: controller.signal }).finally(() => clearTimeout(timer));
+
+    // Propagate an external abort signal (e.g. from the caller's AbortController)
+    // so that user-initiated cancellations (map pan/zoom) actually stop the fetch.
+    const externalSignal = options && options.signal;
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+        }
+    }
+
+    const fetchOptions = { ...(options || {}), signal: controller.signal };
+    delete fetchOptions.timeoutMs;  // timeoutMs is our custom option, not a valid fetch() init key
+    const res = await fetch(url, fetchOptions).finally(() => clearTimeout(timer));
     const durationMs = performance.now() - start;
     const contentType = res.headers.get('content-type') || '';
     let data = null;

@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import MapView from "./MapView";
 import StoryMap from "./StoryMap";
 import { analyzeRegion, fetchResolvedSlr } from "./api";
@@ -93,10 +93,6 @@ export default function App() {
         }
     };
 
-    const handleStoryNavigation = (index) => {
-        navigateToStory(index);
-    };
-
     // Fetch resolved SLR when scenario/year/pct or viewport center changes
     useEffect(() => {
         if (!bbox) return;
@@ -167,10 +163,10 @@ export default function App() {
         }
     };
 
-    const handleBoundsChange = (bounds) => {
+    const handleBoundsChange = useCallback((bounds) => {
         setBbox(bounds);
         if (bounds.zoom != null) setZoom(bounds.zoom);
-    };
+    }, []);
 
     const effectiveSlr = resolvedSlr?.slr_meters ?? null;
 
@@ -206,7 +202,7 @@ export default function App() {
                 <StoryMap
                     stories={stories}
                     currentIndex={currentStory}
-                    onNavigate={handleStoryNavigation}
+                    onNavigate={navigateToStory}
                     onClose={() => setStoryMode(false)}
                     scenario={scenario}
                     year={year}
