@@ -1,9 +1,13 @@
 {
-  "name": "dilluviumdem-frontend",
+  "name": "flood-slr-visualization-frontend",
+  "private": true,
   "version": "1.0.0",
+  "description": "React frontend for interactive sea level rise flood visualization and regional analysis.",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "maplibre-gl": "^3.2.0",

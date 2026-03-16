@@ -76,7 +76,7 @@ Services communicate via user-defined bridge network `slr-net` with DNS aliases.
 ### Environment Variables
 
 - `VITE_API_BASE`: Frontend API prefix (default `/api` for production behind gateway)
-- `TILE_CACHE_SIZE`: Backend LRU cache size for reprojected tiles (default 64)
+- `TILE_CACHE_SIZE`: Backend LRU cache size for rendered tiles (default 512 in Docker Compose)
 
 ## City Story Content
 
@@ -87,7 +87,7 @@ Edit narratives in `Frontend/public/cities/{city-name}.txt`. Format: plain text,
 - **Module path issues**: Backend must run from project root or use `--app-dir Backend/` to resolve `main:app` module correctly
 - **Large TIFF files excluded**: `.gitignore` blocks `*.tif` files to avoid repo bloat. Data must be supplied separately.
 - **CORS for dev**: Backend allows all origins; production should restrict to gateway domain
-- **Tile cache OOM**: Reprojected tiles consume significant memory; TILE_CACHE_SIZE=64 prevents out-of-memory on modest hardware
+- **Tile cache sizing**: The backend uses an in-memory LRU for rendered tiles; Docker Compose currently sets `TILE_CACHE_SIZE=512`.
 - **Flood overlay transparency**: Alpha=150 provides visible highlight without obscuring satellite imagery
 
 ## Testing & Debugging

@@ -217,7 +217,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             const origin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5173';
             const apiBase = origin.includes(':5173') ? origin.replace(':5173', ':8000') : '/api';
             // v=2: cache-bust after NaN dst_arr / bilinear resampling fix
-            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&v=2`;
+            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&v=3`;
 
             const hasSlr = resolvedSlr != null && resolvedSlr > 0;
             const desiredOpacity = hasSlr ? 0.7 : 0.0;

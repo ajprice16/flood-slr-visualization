@@ -555,7 +555,7 @@ def get_tile(z: int, x: int, y: int,
             content=png_bytes,
             media_type="image/png",
             headers={
-                "Cache-Control": "public, max-age=3600",
+                 "Cache-Control": "no-store",
                 "X-Tiles-Used": str(len(tile_paths)),
                 "X-Effective-SLR": f"{slr_meters:.3f}",
             }
