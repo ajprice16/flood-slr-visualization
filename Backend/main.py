@@ -19,6 +19,8 @@ from collections import defaultdict
 from rasterio.warp import reproject, Resampling
 from affine import Affine
 import re
+import threading
+import time as _time
 from typing import Dict, List, Tuple, Optional
 import logging
 
@@ -73,6 +75,82 @@ POPULATION_DATA_DIR = os.path.join(BASE_DIR, "wp_2020")
 os.makedirs(TILE_CACHE, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(POPULATION_DATA_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Active-user session tracking
+# Written to a shared file so all uvicorn workers contribute.
+# One append per IP per _WRITE_INTERVAL seconds → minimal I/O.
+# ---------------------------------------------------------------------------
+_SESSION_FILE = os.path.join(TILE_CACHE, ".sessions")
+_ACTIVE_WINDOW = 300          # 5-minute active window (seconds)
+_WRITE_INTERVAL = 60          # write to file at most once/minute per IP
+_local_seen: Dict[str, float] = {}   # IP → last file-write timestamp (per-worker)
+_local_lock = threading.Lock()
+
+# Paths that should not count as active-user activity
+_SKIP_SESSION_PATHS = {"/health", "/stats", "/cities"}
+
+
+def _record_session(ip: str, path: str) -> None:
+    """Append an active session marker to the shared sessions file."""
+    if not ip or any(path.startswith(p) for p in _SKIP_SESSION_PATHS):
+        return
+    now = _time.time()
+    with _local_lock:
+        if now - _local_seen.get(ip, 0) < _WRITE_INTERVAL:
+            return
+        _local_seen[ip] = now
+    try:
+        with open(_SESSION_FILE, "a") as f:
+            f.write(f"{ip} {now:.0f}\n")
+    except Exception:
+        pass
+
+
+def _read_active_sessions() -> int:
+    """Count unique IPs seen within the last _ACTIVE_WINDOW seconds."""
+    cutoff = _time.time() - _ACTIVE_WINDOW
+    active: set = set()
+    total = 0
+    try:
+        with open(_SESSION_FILE, "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) == 2:
+                    total += 1
+                    try:
+                        if float(parts[1]) >= cutoff:
+                            active.add(parts[0])
+                    except ValueError:
+                        pass
+    except FileNotFoundError:
+        pass
+    if total > 20000:
+        _compact_sessions()
+    return len(active)
+
+
+def _compact_sessions() -> None:
+    """Truncate expired entries from the sessions file."""
+    cutoff = _time.time() - _ACTIVE_WINDOW
+    try:
+        with open(_SESSION_FILE, "r") as f:
+            lines = f.readlines()
+        fresh = [
+            l for l in lines
+            if len(l.split()) == 2 and _safe_float(l.split()[1]) >= cutoff
+        ]
+        with open(_SESSION_FILE, "w") as f:
+            f.writelines(fresh)
+    except Exception:
+        pass
+
+
+def _safe_float(s: str) -> float:
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
 # In-memory caches
 ANALYSIS_CACHE_SIZE = 256
@@ -219,6 +297,13 @@ def health():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/stats")
+def get_stats():
+    return {
+        "active_users_5m": _read_active_sessions(),
+        "tiles_indexed": len(TILE_INDEX),
+    }
+
 # Request timing middleware for diagnostics
 @app.middleware("http")
 async def timing_logger(request, call_next):
@@ -229,12 +314,16 @@ async def timing_logger(request, call_next):
         return response
     finally:
         duration_ms = (time.perf_counter() - start) * 1000.0
-        # Lightweight console log; adjust as needed
         try:
             path = request.url.path
             method = request.method
-            status = getattr(request.state, "_status_code", None)
-            print(f"[API] {method} {path} took {duration_ms:.1f} ms")
+            client_ip = (
+                request.headers.get("x-real-ip")
+                or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                or (request.client.host if request.client else "")
+            )
+            _record_session(client_ip, path)
+            print(f"[API] {method} {path} {client_ip} took {duration_ms:.1f} ms")
         except Exception:
             pass
 
