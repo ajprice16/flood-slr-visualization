@@ -10,4 +10,6 @@ mercantile==1.2.1
 Pillow==12.1.1
 requests==2.33.1
 scipy==1.17.1
+redis==5.2.1
+boto3==1.35.99
 # dilluviumdem  # install from your local source if needed

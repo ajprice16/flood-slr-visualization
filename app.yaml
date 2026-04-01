@@ -1,0 +1,113 @@
+# DigitalOcean App Platform specification
+# Deploy with: doctl apps create --spec app.yaml
+# Or import via the DO control panel (Apps → Create App → Use a spec)
+#
+# Before deploying:
+#   1. Upload DEM tiles to a DO Spaces bucket under prefix dem/
+#   2. Upload WorldPop rasters to a DO Spaces bucket under prefix worldpop/
+#   3. Set SPACES_ACCESS_KEY and SPACES_SECRET_KEY secrets in the DO console
+#   4. Set DEM_BUCKET and WORLDPOP_BUCKET to your Spaces bucket name
+#   5. Update the github.repo field below to your actual GitHub repository
+
+name: flood-slr-visualization
+region: nyc
+
+services:
+  - name: api
+    github:
+      repo: YOUR_GITHUB_USERNAME/flood-slr-visualization  # replace with your repo
+      branch: main
+      deploy_on_push: true
+    source_dir: /
+    dockerfile_path: Backend/Dockerfile
+    http_port: 8000
+    instance_count: 1
+    instance_size_slug: professional-s   # 8 GB RAM, 4 vCPU — scale up to professional-m if needed
+    routes:
+      - path: /api
+        preserve_path_prefix: false      # strips /api before forwarding, backend sees /health, /tiles/...
+    envs:
+      # Redis — injected automatically from the managed database below
+      - key: REDIS_URL
+        value: ${cache.REDIS_URL}
+        scope: RUN_TIME
+
+      # DO Spaces credentials — set values as secrets in the DO console, leave blank here
+      - key: SPACES_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: SPACES_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+
+      # Spaces endpoint — change region (nyc3/sfo3/ams3/sgp1/...) to match your bucket
+      - key: SPACES_ENDPOINT_URL
+        value: https://nyc3.digitaloceanspaces.com
+        scope: RUN_TIME
+      - key: SPACES_REGION
+        value: nyc3
+        scope: RUN_TIME
+
+      # Set these to your actual Spaces bucket names
+      - key: DEM_BUCKET
+        value: ""
+        scope: RUN_TIME
+      - key: WORLDPOP_BUCKET
+        value: ""
+        scope: RUN_TIME
+
+      # Backend tuning — sized for professional-s (4 vCPU, 8 GB)
+      - key: UVICORN_WORKERS
+        value: "4"
+        scope: RUN_TIME
+      - key: TILE_CACHE_SIZE
+        value: "512"
+        scope: RUN_TIME
+      - key: GDAL_CACHEMAX
+        value: "1024"
+        scope: RUN_TIME
+      - key: GDAL_NUM_THREADS
+        value: "4"
+        scope: RUN_TIME
+      - key: OMP_NUM_THREADS
+        value: "4"
+        scope: RUN_TIME
+
+      # Security — DO injects ${APP_DOMAIN} automatically
+      - key: CORS_ALLOW_ORIGINS
+        value: https://${APP_DOMAIN}
+        scope: RUN_TIME
+      - key: TRUSTED_HOSTS
+        value: ${APP_DOMAIN},localhost,127.0.0.1
+        scope: RUN_TIME
+
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 90     # allow time for Spaces bucket listing at startup
+      period_seconds: 15
+      timeout_seconds: 10
+      failure_threshold: 5
+
+static_sites:
+  - name: frontend
+    github:
+      repo: YOUR_GITHUB_USERNAME/flood-slr-visualization  # same repo, same branch
+      branch: main
+      deploy_on_push: true
+    source_dir: Frontend
+    build_command: npm run build
+    output_dir: dist
+    routes:
+      - path: /
+    envs:
+      - key: VITE_API_BASE
+        value: /api
+        scope: BUILD_TIME
+
+databases:
+  - name: cache
+    engine: REDIS
+    version: "7"
+    size: db-s-1vcpu-1gb   # $15/mo — upgrade to db-s-2vcpu-4gb for heavier traffic
+    num_nodes: 1
+    production: false       # set to true for a production cluster with standby

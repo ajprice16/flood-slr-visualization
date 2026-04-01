@@ -21,7 +21,14 @@ from affine import Affine
 import re
 import threading
 import time as _time
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
+
+try:
+    import redis as _redis_module
+    _REDIS_AVAILABLE = True
+except ImportError:
+    _redis_module = None
+    _REDIS_AVAILABLE = False
 import logging
 
 logger = logging.getLogger(__name__)
@@ -77,6 +84,90 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(POPULATION_DATA_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
+# DigitalOcean Spaces configuration (S3-compatible)
+# Set DEM_BUCKET to enable remote DEM/WorldPop access via GDAL /vsis3/ paths.
+# Leave unset to use local DATA_DIR / POPULATION_DATA_DIR (default dev mode).
+# ---------------------------------------------------------------------------
+DEM_BUCKET = os.environ.get("DEM_BUCKET", "")
+WORLDPOP_BUCKET = os.environ.get("WORLDPOP_BUCKET", DEM_BUCKET)
+
+
+def _configure_gdal_spaces() -> None:
+    """Set GDAL/AWS env vars for DigitalOcean Spaces access."""
+    endpoint = os.environ.get("SPACES_ENDPOINT_URL", "https://nyc3.digitaloceanspaces.com")
+    host = endpoint.replace("https://", "").replace("http://", "")
+    os.environ.setdefault("AWS_ACCESS_KEY_ID", os.environ.get("SPACES_ACCESS_KEY", ""))
+    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", os.environ.get("SPACES_SECRET_KEY", ""))
+    os.environ.setdefault("AWS_S3_ENDPOINT", host)
+    os.environ.setdefault("AWS_HTTPS", "YES")
+    os.environ.setdefault("AWS_VIRTUAL_HOSTING", "FALSE")
+    os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
+    os.environ.setdefault("CPL_VSIL_CURL_CACHE_SIZE", "200000000")
+    logger.info("GDAL configured for Spaces: %s", host)
+
+
+def _list_bucket_tifs(bucket: str, prefix: str = "") -> List[Tuple[str, str]]:
+    """List .tif objects in a Spaces bucket. Returns (object_key, basename) pairs."""
+    try:
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ.get("SPACES_ENDPOINT_URL", "https://nyc3.digitaloceanspaces.com"),
+            aws_access_key_id=os.environ.get("SPACES_ACCESS_KEY", ""),
+            aws_secret_access_key=os.environ.get("SPACES_SECRET_KEY", ""),
+            region_name=os.environ.get("SPACES_REGION", "nyc3"),
+        )
+        results: List[Tuple[str, str]] = []
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                key: str = obj["Key"]
+                if key.lower().endswith((".tif", ".tiff")):
+                    results.append((key, os.path.basename(key)))
+        logger.info("Listed %d .tif objects in %s/%s", len(results), bucket, prefix)
+        return results
+    except Exception as e:
+        logger.error("Failed to list Spaces bucket %s prefix %s: %s", bucket, prefix, e)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Redis client (optional — tile L2 cache + session tracking)
+# Falls back gracefully to in-memory LRU + file-based sessions if unavailable.
+# Retries the connection every 30 s so a slow-starting Redis is picked up.
+# ---------------------------------------------------------------------------
+_redis_client: Optional[Any] = None
+_redis_last_attempt: float = 0.0
+_REDIS_RETRY_INTERVAL = 30.0  # seconds between reconnection attempts
+
+
+def _get_redis() -> Optional[Any]:
+    """Return a connected Redis client, or None if not configured/available."""
+    global _redis_client, _redis_last_attempt
+    if _redis_client is not None:
+        return _redis_client
+    if not _REDIS_AVAILABLE:
+        return None
+    url = os.environ.get("REDIS_URL")
+    if not url:
+        return None
+    now = _time.time()
+    if now - _redis_last_attempt < _REDIS_RETRY_INTERVAL:
+        return None  # too soon to retry after last failure
+    _redis_last_attempt = now
+    try:
+        redis_module = _redis_module
+        if redis_module is None:
+            return None
+        client = redis_module.from_url(url, decode_responses=False, socket_connect_timeout=2)
+        client.ping()
+        _redis_client = client
+        logger.info("Redis connected: %s", url.split("@")[-1])
+    except Exception as e:
+        logger.warning("Redis unavailable, will retry in %ds: %s", int(_REDIS_RETRY_INTERVAL), e)
+    return _redis_client
+
+# ---------------------------------------------------------------------------
 # Active-user session tracking
 # Written to a shared file so all uvicorn workers contribute.
 # One append per IP per _WRITE_INTERVAL seconds → minimal I/O.
@@ -92,9 +183,17 @@ _SKIP_SESSION_PATHS = {"/health", "/stats", "/cities"}
 
 
 def _record_session(ip: str, path: str) -> None:
-    """Append an active session marker to the shared sessions file."""
+    """Record an active session. Uses Redis if available, otherwise appends to shared file."""
     if not ip or any(path.startswith(p) for p in _SKIP_SESSION_PATHS):
         return
+    r = _get_redis()
+    if r is not None:
+        try:
+            r.setex(f"session:{ip}", _ACTIVE_WINDOW, "1")
+            return
+        except Exception:
+            pass
+    # Fallback: file-based tracking
     now = _time.time()
     with _local_lock:
         if now - _local_seen.get(ip, 0) < _WRITE_INTERVAL:
@@ -108,7 +207,14 @@ def _record_session(ip: str, path: str) -> None:
 
 
 def _read_active_sessions() -> int:
-    """Count unique IPs seen within the last _ACTIVE_WINDOW seconds."""
+    """Count unique IPs active in the last _ACTIVE_WINDOW seconds."""
+    r = _get_redis()
+    if r is not None:
+        try:
+            return sum(1 for _ in r.scan_iter("session:*", count=1000))
+        except Exception:
+            pass
+    # Fallback: file-based
     cutoff = _time.time() - _ACTIVE_WINDOW
     active: set = set()
     total = 0
@@ -218,15 +324,29 @@ def parse_dem_filename(filename: str) -> Dict:
 
 
 def build_tile_index():
-    """Build spatial index of all DEM tiles in DATA_DIR with grid-based lookup."""
+    """Build spatial index of all DEM tiles.
+
+    Sources from DO Spaces if DEM_BUCKET env var is set (objects under dem/ prefix),
+    otherwise scans DATA_DIR on the local filesystem.
+    """
     global TILE_INDEX, TILE_GRID
     TILE_INDEX = {}
     TILE_GRID = defaultdict(list)
 
-    for filename in os.listdir(DATA_DIR):
-        if not (filename.endswith('.tif') or filename.endswith('.tiff')):
-            continue
+    if DEM_BUCKET:
+        _configure_gdal_spaces()
+        file_entries: List[Tuple[str, str]] = [
+            (f"/vsis3/{DEM_BUCKET}/{key}", basename)
+            for key, basename in _list_bucket_tifs(DEM_BUCKET, prefix="dem/")
+        ]
+    else:
+        file_entries = [
+            (os.path.join(DATA_DIR, f), f)
+            for f in os.listdir(DATA_DIR)
+            if f.lower().endswith((".tif", ".tiff"))
+        ]
 
+    for path, filename in file_entries:
         tile_info = parse_dem_filename(filename)
         if tile_info:
             tile_name = os.path.splitext(filename)[0]
@@ -236,7 +356,7 @@ def build_tile_index():
                 "lat_max": tile_info["lat_max"],
                 "lon_min": tile_info["lon_min"],
                 "lon_max": tile_info["lon_max"],
-                "path": os.path.join(DATA_DIR, filename)
+                "path": path,
             }
             # Insert into all grid cells this tile overlaps (1° x 1° cells)
             for lat_cell in range(math.floor(tile_info["lat_min"]), math.ceil(tile_info["lat_max"])):
@@ -253,17 +373,25 @@ def load_population_data():
 
     POPULATION_RASTERS = []
 
-    # Prefer multiple tiles in directory
-    tif_files = [f for f in os.listdir(POPULATION_DATA_DIR) if f.lower().endswith(('.tif', '.tiff'))]
-    if not tif_files:
-        print(f"ℹ No population GeoTIFFs found in {POPULATION_DATA_DIR}")
-        print("  Run: python download_worldpop.py or place .tif files here")
+    # Collect (path, fname) pairs from Spaces bucket or local directory
+    if WORLDPOP_BUCKET:
+        _configure_gdal_spaces()
+        pop_entries: List[Tuple[str, str]] = [
+            (f"/vsis3/{WORLDPOP_BUCKET}/{key}", basename)
+            for key, basename in _list_bucket_tifs(WORLDPOP_BUCKET, prefix="worldpop/")
+        ]
+    else:
+        local_files = [f for f in os.listdir(POPULATION_DATA_DIR) if f.lower().endswith((".tif", ".tiff"))]
+        pop_entries = [(os.path.join(POPULATION_DATA_DIR, f), f) for f in local_files]
+
+    if not pop_entries:
+        print(f"ℹ No population GeoTIFFs found (bucket={WORLDPOP_BUCKET or POPULATION_DATA_DIR})")
+        print("  Upload worldpop .tif files to the worldpop/ prefix in your Spaces bucket, or place them in Backend/wp_2020/")
         POPULATION_DATASET = None
         return False
 
     loaded = 0
-    for fname in tif_files:
-        fpath = os.path.join(POPULATION_DATA_DIR, fname)
+    for fpath, fname in pop_entries:
         try:
             ds = rasterio.open(fpath)
             b = (ds.bounds.left, ds.bounds.bottom, ds.bounds.right, ds.bounds.top)
@@ -272,9 +400,9 @@ def load_population_data():
         except Exception as e:
             print(f"✗ Failed to open population raster {fname}: {e}")
 
-    # Backward compatibility: if a file named worldpop_2020_1km.tif exists, set POPULATION_DATASET
+    # Backward compatibility: legacy single-file mode (local only)
     single_path = os.path.join(POPULATION_DATA_DIR, "worldpop_2020_1km.tif")
-    if os.path.exists(single_path):
+    if not WORLDPOP_BUCKET and os.path.exists(single_path):
         try:
             POPULATION_DATASET = rasterio.open(single_path)
             print(f"✓ Legacy WorldPop loaded: {single_path}")
@@ -549,16 +677,41 @@ def get_tile(z: int, x: int, y: int,
     tile_names = find_tiles_in_bbox(b.west, b.south, b.east, b.north)
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names if name in TILE_INDEX]
 
+    # L2 cache: Redis (shared across workers, survives restarts)
+    _r = _get_redis()
+    _rkey = f"tile:{z}:{x}:{y}:{round(slr_meters, 3):.3f}"
+    if _r is not None:
+        try:
+            _cached = _r.get(_rkey)
+            if _cached:
+                return Response(
+                    content=_cached,
+                    media_type="image/png",
+                    headers={
+                        "Cache-Control": "public, max-age=3600",
+                        "X-Tiles-Used": str(len(tile_paths)),
+                        "X-Effective-SLR": f"{slr_meters:.3f}",
+                        "X-Cache": "HIT",
+                    },
+                )
+        except Exception:
+            pass
+
     try:
         png_bytes = render_tile_png_multi_cached(tuple(tile_paths), round(slr_meters, 3), z, x, y)
+        if _r is not None:
+            try:
+                _r.setex(_rkey, 3600, png_bytes)
+            except Exception:
+                pass
         return Response(
             content=png_bytes,
             media_type="image/png",
             headers={
-                 "Cache-Control": "public, max-age=3600",
+                "Cache-Control": "public, max-age=3600",
                 "X-Tiles-Used": str(len(tile_paths)),
                 "X-Effective-SLR": f"{slr_meters:.3f}",
-            }
+            },
         )
     except Exception as e:
         logger.error("Tile endpoint error z=%s x=%s y=%s: %s", z, x, y, e, exc_info=True)

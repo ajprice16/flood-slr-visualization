@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import sys
+from typing import Optional
 
 try:
     import requests
@@ -31,7 +32,7 @@ ICE6G_URLS = [
 ]
 
 
-def download_midas(out_path: str, max_stations: int = None):
+def download_midas(out_path: str, max_stations: Optional[int] = None):
     """Download and convert NGL/MIDAS GPS velocities to JSON.
 
     Filters for stations with:
