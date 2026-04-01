@@ -1,6 +1,9 @@
 {
   "venvPath": ".",
   "venv": ".venv",
+  "extraPaths": [
+    ".venv/lib/python3.12/site-packages"
+  ],
   "include": ["Backend"],
   "exclude": ["Frontend/node_modules", "Frontend/dist", "**/__pycache__"],
   "reportMissingImports": true,
