@@ -1,6 +1,6 @@
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
@@ -20,6 +20,9 @@ from rasterio.warp import reproject, Resampling
 from affine import Affine
 import re
 from typing import Dict, List, Tuple, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 import projection
 import vlm
@@ -60,7 +63,7 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["content-type", "accept"],
 )
 
 BASE_DIR = os.path.dirname(__file__)
@@ -282,6 +285,8 @@ def get_tile_info():
 
 @app.get("/debug/tiles_in_bbox")
 def debug_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: float):
+    if os.environ.get("DEBUG_MODE") != "true":
+        raise HTTPException(status_code=404, detail="Not found")
     tiles = find_tiles_in_bbox(lon_min, lat_min, lon_max, lat_max)
     return {
         "request_bbox": [lon_min, lat_min, lon_max, lat_max],
@@ -414,7 +419,8 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
         Image.fromarray(rgba, mode='RGBA').save(buf, format='PNG')
         return buf.getvalue()
 
-    except Exception:
+    except Exception as e:
+        logger.error("Tile render error z=%s x=%s y=%s: %s", z, x, y, e, exc_info=True)
         return _get_transparent_tile(size)
 
 
@@ -460,22 +466,28 @@ def get_tile(z: int, x: int, y: int,
             content=png_bytes,
             media_type="image/png",
             headers={
-                 "Cache-Control": "no-store",
+                 "Cache-Control": "public, max-age=3600",
                 "X-Tiles-Used": str(len(tile_paths)),
                 "X-Effective-SLR": f"{slr_meters:.3f}",
             }
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Tile rendering error: {e}")
+        logger.error("Tile endpoint error z=%s x=%s y=%s: %s", z, x, y, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Tile rendering failed")
 
 
 @app.get("/analyze_region")
-def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: float,
-                   slr: Optional[float] = None,
-                   scenario: Optional[str] = None,
-                   year: Optional[int] = None,
-                   pct: int = 50,
-                   sample_limit: int = 100):
+def analyze_region(
+    lon_min: float = Query(..., ge=-180.0, le=180.0),
+    lon_max: float = Query(..., ge=-180.0, le=180.0),
+    lat_min: float = Query(..., ge=-90.0, le=90.0),
+    lat_max: float = Query(..., ge=-90.0, le=90.0),
+    slr: Optional[float] = Query(None, ge=-5.0, le=100.0),
+    scenario: Optional[str] = None,
+    year: Optional[int] = Query(None, ge=2020, le=2200),
+    pct: int = Query(50, ge=1, le=99),
+    sample_limit: int = Query(100, ge=1, le=10000),
+):
     """Analyze a geographic region for flood risk with SLR.
 
     Two modes:
@@ -675,7 +687,8 @@ def analyze_region(lon_min: float, lat_min: float, lon_max: float, lat_max: floa
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
+        logger.error("Analysis error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 
 

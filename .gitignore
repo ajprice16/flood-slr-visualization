@@ -47,6 +47,7 @@ docker-compose.override.yml
 .env
 .env.local
 .env.*.local
+deploy/.env.ip
 
 # OS
 Thumbs.db
