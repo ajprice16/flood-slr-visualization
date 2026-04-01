@@ -22,5 +22,5 @@ RUN mkdir -p /app/dem /app/wp_2020 /app/tile_cache
 
 EXPOSE 8000
 
-# Start FastAPI via uvicorn
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Start FastAPI via uvicorn (tunable via env vars)
+CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-8} --timeout-keep-alive ${UVICORN_KEEPALIVE:-15}"]

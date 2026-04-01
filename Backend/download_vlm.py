@@ -23,7 +23,7 @@ except ImportError:
 import numpy as np
 
 # NGL MIDAS velocity file (plain text, ~17k stations)
-MIDAS_URL = "http://geodesy.unr.edu/velocities/midas.IGS14.txt"
+MIDAS_URL = "https://geodesy.unr.edu/velocities/midas.IGS14.txt"
 
 # ICE-6G_C data — the Toronto page may be intermittent; fallback to known mirrors
 ICE6G_URLS = [
@@ -50,15 +50,23 @@ def download_midas(out_path: str, max_stations: int = None):
         if line.startswith("#") or not line.strip():
             continue
         parts = line.split()
-        if len(parts) < 10:
+        # Current MIDAS rows contain station metadata, XYZ velocities, uncertainties,
+        # and geodetic coordinates near the end of each record.
+        if len(parts) < 14:
             continue
         try:
             name = parts[0]
-            lat = float(parts[1])
-            lon = float(parts[2])
-            vu = float(parts[7])   # vertical velocity mm/yr
-            su = float(parts[10])  # vertical velocity uncertainty
-            duration = float(parts[13]) if len(parts) > 13 else 3.0
+            duration = float(parts[4])
+
+            # MIDAS vertical velocity/uncertainty are in meters/year in this feed.
+            vu = float(parts[10]) * 1000.0
+            su = float(parts[13]) * 1000.0
+
+            # Latitude/longitude are the 3rd and 2nd values from the end.
+            lat = float(parts[-3])
+            lon = float(parts[-2])
+            # Normalize to [-180, 180] for downstream map use.
+            lon = ((lon + 180.0) % 360.0) - 180.0
 
             # Quality filter
             if duration < 2.5:

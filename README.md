@@ -69,6 +69,51 @@ docker compose up -d
 
 Open the application at `http://localhost`.
 
+## Jetstream2 And Public Hosting
+
+This repository now includes a deployment helper for quickly standing up on a new Jetstream2 instance.
+
+- Onboarding guide: `deploy/JETSTREAM2_ONBOARDING.md`
+- Helper script: `deploy/manage.sh`
+- Public HTTPS compose override: `docker-compose.public.yml`
+- Public env template: `deploy/.env.public.example`
+
+Typical public-hosting flow:
+
+```bash
+cp deploy/.env.public.example deploy/.env.public
+# edit SITE_HOSTNAME in deploy/.env.public
+./deploy/manage.sh public-up
+./deploy/manage.sh health
+```
+
+For local-only (no TLS edge):
+
+```bash
+./deploy/manage.sh dev-up
+```
+
+For Jetstream IP-only hosting (no hostname/TLS yet):
+
+```bash
+cp deploy/.env.ip.example deploy/.env.ip
+# edit PUBLIC_IP in deploy/.env.ip
+./deploy/manage.sh ip-up
+./deploy/manage.sh health
+```
+
+Performance tuning on larger hosts (e.g., 16 cores / 60 GB RAM):
+
+- Set `UVICORN_WORKERS=12` in `deploy/.env.ip`
+- Set `TILE_CACHE_SIZE=2048` and `GDAL_CACHEMAX=2048`
+- Keep `GDAL_NUM_THREADS=ALL_CPUS`
+
+Apply changes with:
+
+```bash
+./deploy/manage.sh restart
+```
+
 Service summary:
 
 - Gateway: `http://localhost`

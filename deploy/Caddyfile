@@ -1,0 +1,17 @@
+{$SITE_HOSTNAME} {
+  encode zstd gzip
+
+  # Basic security headers at edge
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  reverse_proxy gateway:80 {
+    health_uri /api/health
+    health_interval 15s
+    health_timeout 3s
+  }
+}

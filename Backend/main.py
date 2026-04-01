@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 import rasterio
 from rasterio.merge import merge
@@ -44,11 +45,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+
+def _csv_env_list(name: str, default: str) -> List[str]:
+    raw = os.environ.get(name, default)
+    return [v.strip() for v in raw.split(",") if v.strip()]
+
+
+trusted_hosts = _csv_env_list("TRUSTED_HOSTS", "localhost,127.0.0.1")
+cors_origins = _csv_env_list("CORS_ALLOW_ORIGINS", "http://localhost,http://127.0.0.1")
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "OPTIONS"],
     allow_headers=["*"],
 )
 
