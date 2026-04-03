@@ -46,7 +46,7 @@ Edit `deploy/.env.public` and set your DNS hostname:
 
 ```dotenv
 SITE_HOSTNAME=your-domain.example.org
-GATEWAY_PORT_BIND=127.0.0.1:8080:80
+GATEWAY_PORT_BIND=127.0.0.1:8080:8080
 TRUSTED_HOSTS=localhost,127.0.0.1,gateway,caddy,your-domain.example.org
 CORS_ALLOW_ORIGINS=https://your-domain.example.org
 ```

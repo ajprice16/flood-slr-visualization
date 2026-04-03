@@ -17,6 +17,8 @@ import os
 import sys
 import tempfile
 import zipfile
+import shutil
+import numpy as np
 
 try:
     import requests
@@ -44,11 +46,40 @@ def download_ar6_data(out_dir: str) -> list:
     files = record.get("files", [])
     downloaded = []
 
+    def _download_file(url: str, dest: str):
+        if os.path.exists(dest):
+            return
+        r = requests.get(url, stream=True, timeout=300)
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    def _extract_from_zip(zip_path: str):
+        extracted = []
+        zip_tag = os.path.splitext(os.path.basename(zip_path))[0]
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            members = zf.namelist()
+            for scenario in SCENARIOS:
+                target_name = f"total_{scenario}_{CONFIDENCE}_values.nc"
+                matching = [m for m in members if m.endswith(target_name)]
+                if not matching:
+                    continue
+                member = matching[0]
+                dest = os.path.join(out_dir, f"{zip_tag}_{target_name}")
+                with zf.open(member) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                extracted.append((scenario, dest))
+                print(f"  ✓ Extracted {target_name} from {os.path.basename(zip_path)}")
+        return extracted
+
+    # First try direct NetCDF assets (legacy Zenodo layout).
     for scenario in SCENARIOS:
         pattern = f"total_{scenario}_{CONFIDENCE}_values"
         matching = [f for f in files if pattern in f.get("key", "")]
         if not matching:
-            print(f"  ⚠ No file found for {scenario} ({pattern})")
+            print(f"  ℹ Direct file not found for {scenario} ({pattern})")
             continue
 
         file_info = matching[0]
@@ -70,6 +101,41 @@ def download_ar6_data(out_dir: str) -> list:
 
         downloaded.append((scenario, dest))
         print(f"  ✓ Downloaded: {fname}")
+
+    # If direct files are missing, use zip bundles and extract only needed files.
+    found = {s for s, _ in downloaded}
+    if len(found) < len(SCENARIOS):
+        file_map = {f.get("key"): f for f in files}
+        zip_candidates = [
+            "ar6-regional_novlm-confidence.zip",
+            "ar6-regional-confidence.zip",
+            "ar6.zip",
+        ]
+
+        for zip_name in zip_candidates:
+            if len(found) == len(SCENARIOS):
+                break
+            info = file_map.get(zip_name)
+            if not info:
+                continue
+
+            url = info["links"]["self"]
+            zip_dest = os.path.join(out_dir, zip_name)
+            if not os.path.exists(zip_dest):
+                print(f"  Downloading {zip_name} ({info.get('size', '?')} bytes)...")
+            else:
+                print(f"  ✓ Already downloaded: {zip_name}")
+            _download_file(url, zip_dest)
+
+            extracted = _extract_from_zip(zip_dest)
+            for scenario, path in extracted:
+                if scenario not in found:
+                    downloaded.append((scenario, path))
+                    found.add(scenario)
+
+    missing = [s for s in SCENARIOS if s not in {sc for sc, _ in downloaded}]
+    for scenario in missing:
+        print(f"  ⚠ No projection file found for {scenario}")
 
     return downloaded
 
@@ -108,15 +174,27 @@ def convert_to_json(nc_files: list, out_path: str):
         result["scenarios"].append(scenario)
         result["values"][scenario] = {}
 
-        # sea_level_change shape: (locations, years, quantiles) — units typically mm
-        slc = ds.variables["sea_level_change"][:].data
+        # sea_level_change may use different axis orders between source bundles.
+        # Normalize to (locations, years, quantiles) before sampling target quantiles.
+        slc_var = ds.variables["sea_level_change"]
+        slc = slc_var[:].data
+        dims = list(slc_var.dimensions)
+        dim_to_axis = {name: idx for idx, name in enumerate(dims)}
+        if not {"locations", "years", "quantiles"}.issubset(dim_to_axis):
+            raise ValueError(f"Unexpected sea_level_change dimensions: {dims}")
+
+        slc_norm = np.moveaxis(
+            slc,
+            [dim_to_axis["locations"], dim_to_axis["years"], dim_to_axis["quantiles"]],
+            [0, 1, 2],
+        )
 
         for target_q, pct_key in zip(TARGET_QUANTILES, ["5", "50", "95"]):
             # Find nearest quantile index
             q_idx = min(range(len(quantiles)), key=lambda i: abs(quantiles[i] - target_q))
 
             # Extract values and convert mm -> meters
-            vals = slc[:, :, q_idx]
+            vals = slc_norm[:, :, q_idx]
             # Handle potential fill values
             vals = vals.astype(float)
             vals[vals > 1e10] = 0.0

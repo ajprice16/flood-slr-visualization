@@ -6,8 +6,6 @@ services:
       dockerfile: Backend/Dockerfile
     image: slr-backend:latest
     container_name: slr-backend
-    depends_on:
-      - redis
     volumes:
       - ./Backend/dem:/app/dem:ro
       - ./Backend/wp_2020:/app/wp_2020:ro
@@ -22,7 +20,7 @@ services:
       - OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-localhost,127.0.0.1,gateway,caddy}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost,http://127.0.0.1}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -74,7 +72,7 @@ services:
     image: slr-gateway:latest
     container_name: slr-gateway
     ports:
-      - "${GATEWAY_PORT_BIND:-80:80}"
+      - "${GATEWAY_PORT_BIND:-80:8080}"
     depends_on:
       - frontend
       - backend
@@ -98,25 +96,6 @@ services:
       slr-net:
         aliases:
           - gateway
-
-  redis:
-    image: redis:7-alpine
-    container_name: slr-redis
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512m
-    networks:
-      slr-net:
-        aliases:
-          - redis
 
 networks:
   slr-net:

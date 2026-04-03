@@ -31,7 +31,7 @@ compose_cmd() {
       echo "Missing ${ENV_FILE}. Copy deploy/.env.public.example and set SITE_HOSTNAME." >&2
       exit 1
     fi
-    GATEWAY_PORT_BIND="${GATEWAY_PORT_BIND:-127.0.0.1:8080:80}" \
+    GATEWAY_PORT_BIND="${GATEWAY_PORT_BIND:-127.0.0.1:8080:8080}" \
       docker compose --env-file "${ENV_FILE}" -f "${BASE_COMPOSE}" -f "${PUBLIC_COMPOSE}" "${@:2}"
   elif [[ "${1:-}" == "ip" ]]; then
     if [[ ! -f "${IP_ENV_FILE}" ]]; then
