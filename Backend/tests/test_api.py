@@ -23,12 +23,17 @@ if BACKEND_DIR not in sys.path:
 # ---------------------------------------------------------------------------
 
 def _make_dem_bytes(elevation=0.5, height=10, width=10,
-                    west=139.0, south=35.0, east=140.0, north=36.0):
+                    west=139.0, south=35.0, east=140.0, north=36.0,
+                    array=None):
     """Create an in-memory GeoTIFF for a 1°×1° region."""
     import rasterio
     from rasterio.transform import from_bounds
 
-    arr = np.full((height, width), elevation, dtype=np.float32)
+    if array is None:
+        arr = np.full((height, width), elevation, dtype=np.float32)
+    else:
+        arr = np.asarray(array, dtype=np.float32)
+        height, width = arr.shape
     buf = io.BytesIO()
     transform = from_bounds(west=west, south=south, east=east, north=north,
                              width=width, height=height)
@@ -61,7 +66,7 @@ def client():
         # Swap lifespan so TestClient doesn't call the real startup
         app_module.app.router.lifespan_context = _noop_lifespan
         from starlette.testclient import TestClient
-        with TestClient(app_module.app, raise_server_exceptions=True) as c:
+        with TestClient(app_module.app, base_url="http://localhost", raise_server_exceptions=True) as c:
             yield c, app_module
 
 
@@ -176,6 +181,38 @@ class TestGetTileWithDem:
         assert resp.status_code == 200
         assert "image/png" in resp.headers["content-type"]
 
+    def test_inland_basin_does_not_paint_tile(self, client, tmp_path):
+        """An isolated inland basin below sea level should stay transparent."""
+        c, app_module = client
+        import mercantile
+
+        t = mercantile.tile(139.5, 35.5, 8)
+        bounds = mercantile.bounds(t.x, t.y, t.z)
+        arr = np.full((128, 128), 20.0, dtype=np.float32)
+        arr[24:-24, 24:-24] = -1.0
+
+        dem_bytes = _make_dem_bytes(array=arr, west=bounds.west, south=bounds.south,
+                                    east=bounds.east, north=bounds.north)
+        dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
+        dem_path.write_bytes(dem_bytes)
+
+        tile_name = "DiluviumDEM_N35_00_E139_00"
+        app_module.TILE_INDEX = {
+            tile_name: {
+                "bounds": (bounds.west, bounds.south, bounds.east, bounds.north),
+                "lat_min": bounds.south, "lat_max": bounds.north,
+                "lon_min": bounds.west, "lon_max": bounds.east,
+                "path": str(dem_path),
+            }
+        }
+        app_module.TILE_GRID = defaultdict(list)
+        app_module.TILE_GRID[(int(bounds.south), int(bounds.west))].append(tile_name)
+        app_module.render_tile_png_multi_cached.cache_clear()
+
+        resp = c.get(f"/tiles/{t.z}/{t.x}/{t.y}?slr=2.0")
+        assert resp.status_code == 200
+        assert resp.content == app_module._get_transparent_tile()
+
 
 # ---------------------------------------------------------------------------
 # /analyze_region — parameter handling
@@ -237,6 +274,40 @@ class TestAnalyzeRegion:
                          "total_valid", "flood_ratio", "flooded_pixels",
                          "elevation_min", "elevation_max"}
         assert required_keys.issubset(data.keys())
+
+    def test_inland_basin_not_counted_as_flooded(self, client, tmp_path):
+        c, app_module = client
+        import mercantile
+
+        t = mercantile.tile(139.5, 35.5, 8)
+        bounds = mercantile.bounds(t.x, t.y, t.z)
+        arr = np.full((128, 128), 20.0, dtype=np.float32)
+        arr[24:-24, 24:-24] = -1.0
+
+        dem_bytes = _make_dem_bytes(array=arr, west=bounds.west, south=bounds.south,
+                                    east=bounds.east, north=bounds.north)
+        dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
+        dem_path.write_bytes(dem_bytes)
+        tile_name = "DiluviumDEM_N35_00_E139_00"
+        app_module.TILE_INDEX = {
+            tile_name: {
+                "bounds": (bounds.west, bounds.south, bounds.east, bounds.north),
+                "lat_min": bounds.south, "lat_max": bounds.north,
+                "lon_min": bounds.west, "lon_max": bounds.east,
+                "path": str(dem_path),
+            }
+        }
+        app_module.TILE_GRID = defaultdict(list)
+        app_module.TILE_GRID[(int(bounds.south), int(bounds.west))].append(tile_name)
+
+        resp = c.get(
+            f"/analyze_region?lon_min={bounds.west}&lat_min={bounds.south}"
+            f"&lon_max={bounds.east}&lat_max={bounds.north}&slr=2.0"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["flooded_count"] == 0
+        assert data["flood_ratio"] == 0.0
 
     def test_all_flooded_when_slr_above_elevation(self, client, tmp_path):
         """All pixels are at 0.5 m; slr=2.0 should flood everything."""

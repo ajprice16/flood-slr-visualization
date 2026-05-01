@@ -1,6 +1,9 @@
 services:
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    image: slr-caddy:latest
     container_name: slr-caddy
     depends_on:
       - gateway
@@ -8,7 +11,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      - SITE_HOSTNAME=${SITE_HOSTNAME}
+      - CF_API_TOKEN=${CF_API_TOKEN}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -21,6 +24,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     networks:
       slr-net:
         aliases:

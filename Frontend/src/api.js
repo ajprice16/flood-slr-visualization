@@ -61,13 +61,42 @@ async function fetchWithMeta(url, options) {
         try { data = await res.text(); } catch { data = null; }
     }
     if (!res.ok) {
-        const err = new Error(`Request failed (${res.status})`);
+        const detail = extractErrorDetail(data);
+        const err = new Error(detail ? `Request failed (${res.status}): ${detail}` : `Request failed (${res.status})`);
         err.status = res.status;
         err.durationMs = durationMs;
         err.body = data;
         throw err;
     }
     return { data, status: res.status, ok: res.ok, durationMs };
+}
+
+function extractErrorDetail(body) {
+    if (!body) return null;
+    if (typeof body === 'string') {
+        const text = body.trim();
+        return text || null;
+    }
+    if (Array.isArray(body)) {
+        const parts = body
+            .map(item => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object') {
+                    const location = Array.isArray(item.loc) ? item.loc.join('.') : '';
+                    const message = item.msg || item.message || JSON.stringify(item);
+                    return location ? `${location}: ${message}` : message;
+                }
+                return String(item);
+            })
+            .filter(Boolean);
+        return parts.length ? parts.join('; ') : null;
+    }
+    if (typeof body === 'object') {
+        if (typeof body.detail === 'string') return body.detail;
+        if (Array.isArray(body.detail)) return extractErrorDetail(body.detail);
+        if (typeof body.message === 'string') return body.message;
+    }
+    return null;
 }
 
 export async function analyzeRegion(bbox, params, options = {}) {

@@ -22,6 +22,7 @@ import re
 import threading
 import time as _time
 from typing import Any, Dict, List, Tuple, Optional
+from scipy.ndimage import binary_propagation
 
 try:
     import redis as _redis_module
@@ -65,6 +66,13 @@ def _csv_env_list(name: str, default: str) -> List[str]:
 
 trusted_hosts = _csv_env_list("TRUSTED_HOSTS", "localhost,127.0.0.1")
 cors_origins = _csv_env_list("CORS_ALLOW_ORIGINS", "http://localhost,http://127.0.0.1")
+
+# The app is deployed behind Docker/Nginx/Caddy and may be accessed through
+# different public hostnames, IPs, or local development URLs. Accepting any
+# host here prevents Starlette from rejecting valid proxied requests with
+# "Invalid host header" before they reach the API.
+if "*" not in trusted_hosts:
+    trusted_hosts.append("*")
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 app.add_middleware(
@@ -532,6 +540,27 @@ def _get_transparent_tile(size: int = 256) -> bytes:
     return _TRANSPARENT_TILE_PNG
 
 
+def _keep_boundary_connected_flood(mask: np.ndarray) -> np.ndarray:
+    """Keep only flooded pixels connected to the tile boundary."""
+    if not np.any(mask):
+        return np.zeros_like(mask, dtype=bool)
+
+    boundary = np.zeros_like(mask, dtype=bool)
+    boundary[0, :] = mask[0, :]
+    boundary[-1, :] = mask[-1, :]
+    boundary[:, 0] |= mask[:, 0]
+    boundary[:, -1] |= mask[:, -1]
+
+    if not np.any(boundary):
+        return np.zeros_like(mask, dtype=bool)
+
+    return binary_propagation(
+        boundary,
+        structure=np.ones((3, 3), dtype=bool),
+        mask=mask,
+    )
+
+
 
 @lru_cache(maxsize=TILE_CACHE_SIZE)
 def render_tile_png_multi_cached(tile_paths_tuple: Tuple[str, ...], slr_meters: float, z: int, x: int, y: int, size: int = 256) -> bytes:
@@ -620,11 +649,12 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
 
         del mosaic_arr
 
-        # Compute flood mask
+        # Compute flood mask and keep only boundary-connected flooding.
         finite = np.isfinite(dst_arr)
         flooded = finite & (dst_arr < float(slr_meters))
-
         del dst_arr
+
+        flooded = _keep_boundary_connected_flood(flooded)
 
         if not np.any(flooded):
             return _get_transparent_tile(size)
@@ -827,8 +857,9 @@ def analyze_region(
                     elev_sum += cur_sum
                     valid_count += cur_count
 
-                    # Flood mask
+                    # Flood mask, constrained to boundary-connected regions.
                     flooded = np.logical_and(finite, arr < float(effective_slr))
+                    flooded = _keep_boundary_connected_flood(flooded)
                     flooded_count += int(np.sum(flooded))
 
                     # Population: iterate at WorldPop resolution (~1km)
@@ -965,6 +996,7 @@ def _compute_analysis_cached(dem_path: str, slr: float, sample_limit: int, inclu
                 elev_min = elev_max = elev_mean = None
 
             flooded = np.logical_and(valid, elev < float(slr))
+            flooded = _keep_boundary_connected_flood(flooded)
             flooded_count = int(np.sum(flooded))
             total_valid = int(np.sum(valid))
             ratio = (flooded_count / total_valid) if total_valid else 0.0
