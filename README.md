@@ -137,11 +137,14 @@ Current story locations include:
 
 ## Data Sources And Credits
 
-- Elevation: DiluviumDEM
-- Population: WorldPop
-- Sea level projections: IPCC AR6
-- Basemap and labels: Esri World Imagery and Esri Boundaries and Places
-- Mapping library: MapLibre GL JS
+- **Elevation**: DiluviumDEM
+- **Population**: WorldPop 2020
+- **Sea Level Projections**: IPCC AR6 WG1 Regional Sea-Level Projections (Garner et al., 2022; Zenodo: https://doi.org/10.5281/zenodo.6382554)
+- **Vertical Land Motion (VLM)**:
+  - ICE-6G_C: Global GIA (Glacial Isostatic Adjustment) baseline
+  - MIDAS/NGL: GPS-observed total VLM stations
+- **Basemap and Labels**: Esri World Imagery and Esri Boundaries and Places
+- **Mapping Library**: MapLibre GL JS
 
 ## License
 

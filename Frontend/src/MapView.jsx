@@ -314,8 +314,10 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                 <div>© Satellite imagery: <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>Esri</a>, Maxar, Earthstar Geographics</div>
                 <div>© Labels: <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>Esri</a>, HERE, Garmin, INCREMENT P</div>
                 <div>© DEM: <a href="https://github.com/ddusseau/DiluviumDEM" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>DiluviumDEM</a> (Dusseau et al.)</div>
+                <div>© IPCC Projections: <a href="https://doi.org/10.5281/zenodo.6382554" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>IPCC AR6 WG1</a> (Garner et al., 2022)</div>
                 <div>© Population: <a href="https://www.worldpop.org" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>WorldPop</a></div>
                 <div>© Mapping: <a href="https://maplibre.org" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>MapLibre GL JS</a></div>
+                <div>© VLM: <a href="https://geodesy.unr.edu/velocities/midas.IGS14.txt" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>MIDAS</a> (UNR) </div>
             </div>
         </div>
     );
