@@ -7,7 +7,7 @@
  * special characters correctly.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React, { createRef } from 'react';
 
@@ -20,6 +20,21 @@ global.fetch = vi.fn().mockResolvedValue({ text: () => Promise.resolve('City inf
 import MapView from '../MapView';
 // Import the real escapeHtml used by MapView so tests verify the actual implementation.
 import { escapeHtml } from '../utils';
+import { mapInstance } from './__mocks__/maplibre-gl.js';
+
+beforeEach(() => {
+    mapInstance.getSource.mockReset().mockReturnValue(null);
+    mapInstance.addSource.mockReset();
+    mapInstance.getLayer.mockReset().mockReturnValue(null);
+    mapInstance.addLayer.mockReset();
+    mapInstance.removeSource.mockReset();
+    mapInstance.removeLayer.mockReset();
+    mapInstance.setPaintProperty.mockReset();
+    mapInstance.on.mockImplementation((event, fn) => {
+        if (event === 'load') fn();
+    });
+    mapInstance.isStyleLoaded.mockReturnValue(true);
+});
 
 describe('MapView', () => {
     it('renders without crashing', () => {
@@ -92,6 +107,31 @@ describe('MapView', () => {
             />
         );
         expect(screen.getByText(/123ms/)).toBeTruthy();
+    });
+
+    it('includes connectivity and water mask params in the raster tile URL', () => {
+        render(
+            <MapView
+                floodData={null}
+                bbox={null}
+                scenario="ssp585"
+                year={2150}
+                percentile={95}
+                resolvedSlr={0.5}
+                connectivityMode="full"
+                waterMaskMode="raster"
+                onBoundsChange={vi.fn()}
+                pending={false}
+                lastRequest={null}
+                mapRef={createRef()}
+            />
+        );
+
+        const sourceCall = mapInstance.addSource.mock.calls.find(call => call[0] === 'flood-raster');
+        expect(sourceCall).toBeTruthy();
+        const tiles = sourceCall[1].tiles;
+        expect(tiles[0]).toContain('connectivity=full');
+        expect(tiles[0]).toContain('water_mask=raster');
     });
 });
 

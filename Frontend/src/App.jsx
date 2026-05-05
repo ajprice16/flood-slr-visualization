@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MapView from "./MapView";
 import StoryMap from "./StoryMap";
+import LandingPage from "./LandingPage";
 import { analyzeRegion, fetchResolvedSlr } from "./api";
 
 const SCENARIO_LABELS = {
@@ -12,10 +13,13 @@ const SCENARIO_LABELS = {
 };
 
 export default function App() {
+    const [showLanding, setShowLanding] = useState(true);
     const [bbox, setBbox] = useState(null);
     const [scenario, setScenario] = useState("ssp245");
     const [year, setYear] = useState(2100);
     const [percentile, setPercentile] = useState(50);
+    const [connectivityMode, setConnectivityMode] = useState("boundary");
+    const [waterMaskMode, setWaterMaskMode] = useState("none");
     const [resolvedSlr, setResolvedSlr] = useState(null);
     const [floodData, setFloodData] = useState(null);
     const [pending, setPending] = useState(false);
@@ -170,6 +174,11 @@ export default function App() {
 
     const effectiveSlr = resolvedSlr?.slr_meters ?? null;
 
+    // Show landing page if user hasn't accepted disclaimer
+    if (showLanding) {
+        return <LandingPage onProceed={() => setShowLanding(false)} />;
+    }
+
     return (
         <div style={{ display: "flex", height: "100%", position: "relative" }}>
             {/* Story Mode Toggle */}
@@ -273,6 +282,49 @@ export default function App() {
                     </div>
                 </div>
 
+                {/* Connectivity Mode */}
+                <div style={{ marginBottom: "12px" }}>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Connectivity</label>
+                    <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
+                        {[
+                            { value: "boundary", label: "Boundary" },
+                            { value: "none", label: "None" },
+                            { value: "full", label: "3x3 Mosaic" },
+                        ].map(({ value, label }) => (
+                            <button
+                                key={value}
+                                onClick={() => setConnectivityMode(value)}
+                                style={{
+                                    flex: 1,
+                                    padding: "6px 4px",
+                                    fontSize: "11px",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "3px",
+                                    cursor: "pointer",
+                                    background: connectivityMode === value ? "#007acc" : "#fff",
+                                    color: connectivityMode === value ? "#fff" : "#333",
+                                    fontWeight: connectivityMode === value ? "600" : "400",
+                                }}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Water Mask Mode */}
+                <div style={{ marginBottom: "12px" }}>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Water Mask</label>
+                    <select
+                        value={waterMaskMode}
+                        onChange={e => setWaterMaskMode(e.target.value)}
+                        style={{ width: "100%", padding: "6px", marginTop: "4px", fontSize: "13px" }}
+                    >
+                        <option value="none">None</option>
+                        <option value="raster">Raster (if configured)</option>
+                    </select>
+                </div>
+
                 {/* Resolved SLR Display */}
                 {resolvedSlr && (
                     <div style={{
@@ -362,6 +414,8 @@ export default function App() {
                     year={year}
                     percentile={percentile}
                     resolvedSlr={effectiveSlr}
+                    connectivityMode={connectivityMode}
+                    waterMaskMode={waterMaskMode}
                     onBoundsChange={handleBoundsChange}
                     pending={pending}
                     lastRequest={lastRequest}

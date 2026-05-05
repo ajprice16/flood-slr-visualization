@@ -122,3 +122,8 @@ class TestBuildAndFindTiles:
         # lon_min == lon_max is technically an empty box; the function may or may not
         # return the tile depending on exact inequality; we only assert no crash.
         assert isinstance(result, list)
+
+    def test_padding_expands_search_area(self):
+        self._add_tile("T1", 120.0, 35.0, 121.0, 36.0)
+        result = m.find_tiles_in_bbox(118.5, 34.5, 119.5, 35.5, padding_deg=1.0)
+        assert "T1" in result

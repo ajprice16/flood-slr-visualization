@@ -13,14 +13,14 @@ services:
       - ./Backend/data:/app/data:ro
     environment:
       - TILE_CACHE_SIZE=${TILE_CACHE_SIZE:-2048}
-      - UVICORN_WORKERS=${UVICORN_WORKERS:-12}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-10}
       - UVICORN_KEEPALIVE=${UVICORN_KEEPALIVE:-15}
       - GDAL_CACHEMAX=${GDAL_CACHEMAX:-2048}
-      - GDAL_NUM_THREADS=${GDAL_NUM_THREADS:-8}
-      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
+      - GDAL_NUM_THREADS=${GDAL_NUM_THREADS:-1}
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-localhost,127.0.0.1,gateway,caddy}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS:-http://localhost,http://127.0.0.1}
-      - REDIS_URL=${REDIS_URL:-}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -39,6 +39,23 @@ services:
       slr-net:
         aliases:
           - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: slr-redis
+    command: ["redis-server", "--appendonly", "no", "--maxmemory", "2gb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 3g
+    networks:
+      slr-net:
+        aliases:
+          - redis
 
   frontend:
     build:

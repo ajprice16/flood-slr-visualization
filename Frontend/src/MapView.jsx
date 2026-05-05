@@ -3,7 +3,7 @@ import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
 import { escapeHtml } from "./utils";
 
-export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
+export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
     const debounceRef = useRef(null);
@@ -243,8 +243,8 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
         const applyRaster = () => {
             const origin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5173';
             const apiBase = origin.includes(':5173') ? origin.replace(':5173', ':8000') : '/api';
-            // v=2: cache-bust after NaN dst_arr / bilinear resampling fix
-            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&v=3`;
+            // v=4: cache-bust for connectivity-mode and water-mask routing
+            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&connectivity=${connectivityMode}&water_mask=${waterMaskMode}&v=4`;
 
             const hasSlr = resolvedSlr != null && resolvedSlr > 0;
             const desiredOpacity = hasSlr ? 0.7 : 0.0;
@@ -279,7 +279,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             };
             map.on('load', onLoad);
         }
-    }, [scenario, year, percentile, resolvedSlr]);
+    }, [scenario, year, percentile, connectivityMode, waterMaskMode, resolvedSlr]);
 
     return (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>

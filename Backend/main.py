@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 import projection
 import vlm
+import water_mask
 
 
 @asynccontextmanager
@@ -43,6 +44,8 @@ async def lifespan(app: FastAPI):
     """Build tile index, load population data, projections, and VLM on startup."""
     build_tile_index()
     load_population_data()
+    global WATER_MASK_PROVIDER
+    WATER_MASK_PROVIDER = water_mask.load_provider()
 
     # IPCC AR6 projections (optional — falls back to embedded global mean)
     proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
@@ -286,6 +289,7 @@ TILE_GRID: Dict[Tuple[int, int], List[str]] = defaultdict(list)
 # WorldPop population raster datasets (support multiple GeoTIFFs for cross-border sampling)
 POPULATION_DATASET = None  # legacy single-file support
 POPULATION_RASTERS: List[Dict] = []  # each: {"ds": rasterio.DatasetReader, "bounds": (l,b,r,t), "crs": crs}
+WATER_MASK_PROVIDER = None
 
 
 def parse_dem_filename(filename: str) -> Dict:
@@ -464,13 +468,18 @@ async def timing_logger(request, call_next):
             pass
 
 
-def find_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: float) -> List[str]:
+def find_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: float, padding_deg: float = 0.0) -> List[str]:
     """Find all DEM tiles that intersect the given bounding box using grid index.
 
     O(k) where k = number of matching tiles, instead of O(n) scanning all 6000+ tiles.
     """
     results = []
     seen = set()
+
+    lon_min = lon_min - padding_deg
+    lat_min = lat_min - padding_deg
+    lon_max = lon_max + padding_deg
+    lat_max = lat_max + padding_deg
 
     # Check all grid cells the bbox could overlap (with 1-cell margin for safety)
     lat_start = math.floor(lat_min) - 1
@@ -561,13 +570,31 @@ def _keep_boundary_connected_flood(mask: np.ndarray) -> np.ndarray:
     )
 
 
+def _make_dst_transform(bounds, size: int) -> Affine:
+    """Build a north-up affine transform for a bounding box."""
+    left, bottom, right, top = bounds
+    return Affine(
+        (right - left) / size, 0.0, left,
+        0.0, -(top - bottom) / size, top,
+    )
+
+
 
 @lru_cache(maxsize=TILE_CACHE_SIZE)
-def render_tile_png_multi_cached(tile_paths_tuple: Tuple[str, ...], slr_meters: float, z: int, x: int, y: int, size: int = 256) -> bytes:
+def render_tile_png_multi_cached(tile_paths_tuple: Tuple[str, ...], slr_meters: float, z: int, x: int, y: int, size: int = 256, connectivity_mode: str = "boundary", water_mask_mode: str = "none") -> bytes:
     """Cached wrapper for render_tile_png_multi. Uses tuple for hashability."""
-    return render_tile_png_multi(list(tile_paths_tuple), slr_meters, z, x, y, size)
+    return render_tile_png_multi(
+        list(tile_paths_tuple),
+        slr_meters,
+        z,
+        x,
+        y,
+        size,
+        connectivity_mode=connectivity_mode,
+        water_mask_mode=water_mask_mode,
+    )
 
-def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: int, y: int, size: int = 256) -> bytes:
+def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: int, y: int, size: int = 256, connectivity_mode: str = "boundary", water_mask_mode: str = "none") -> bytes:
     """Render a flood overlay PNG tile using windowed DEM reads.
 
     Uses windowed reads to only load the portion of each DEM that intersects
@@ -576,18 +603,35 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
     if slr_meters <= 0 or not tile_paths:
         return _get_transparent_tile(size)
 
+    if connectivity_mode not in {"boundary", "none", "full"}:
+        raise ValueError(f"Invalid connectivity mode: {connectivity_mode}")
+    if water_mask_mode not in {"none", "raster"}:
+        raise ValueError(f"Invalid water mask mode: {water_mask_mode}")
+
     # Map tile bounds in lat/lon (for DEM window reads) and Web Mercator (for output grid)
     b = mercantile.bounds(x, y, z)
     wm = mercantile.xy_bounds(x, y, z)
+    render_size = size * 3 if connectivity_mode == "full" else size
+    if connectivity_mode == "full":
+        render_bounds = (
+            wm.left - (wm.right - wm.left),
+            wm.bottom - (wm.top - wm.bottom),
+            wm.right + (wm.right - wm.left),
+            wm.top + (wm.top - wm.bottom),
+        )
+        lonlat_bounds = (b.west - 1.0, b.south - 1.0, b.east + 1.0, b.north + 1.0)
+    else:
+        render_bounds = (wm.left, wm.bottom, wm.right, wm.top)
+        lonlat_bounds = (b.west, b.south, b.east, b.north)
 
     try:
         if len(tile_paths) == 1:
             # Single DEM tile: windowed read of just the intersecting region
             with rasterio.open(tile_paths[0]) as src:
-                left = max(b.west, src.bounds.left)
-                right = min(b.east, src.bounds.right)
-                bottom = max(b.south, src.bounds.bottom)
-                top = min(b.north, src.bounds.top)
+                left = max(lonlat_bounds[0], src.bounds.left)
+                right = min(lonlat_bounds[2], src.bounds.right)
+                bottom = max(lonlat_bounds[1], src.bounds.bottom)
+                top = min(lonlat_bounds[3], src.bounds.top)
 
                 if left >= right or bottom >= top:
                     return _get_transparent_tile(size)
@@ -598,9 +642,9 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 nodata = src.nodata
                 src_crs = src.crs
         else:
-            # Multiple DEM tiles: merge with a small buffer beyond tile bounds so that
-            # pixels right at the 1°×1° DEM tile seam are captured from both neighbours,
-            # preventing a 1-pixel-wide nodata strip at the boundary.
+            # Multiple DEM tiles: merge over the requested bounds. In full mode the
+            # bounds are expanded to the surrounding 3x3 neighborhood so connectivity
+            # can propagate across seams before we crop back to the center tile.
             datasets = []
             try:
                 for path in tile_paths:
@@ -611,10 +655,7 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 if not datasets:
                     return _get_transparent_tile(size)
 
-                # Buffer of ~0.01° (~1 km) ensures boundary pixels from adjacent tiles
-                # are included in the mosaic before reprojection clips back to tile extent.
-                _buf = 0.01
-                merge_bounds = (b.west - _buf, b.south - _buf, b.east + _buf, b.north + _buf)
+                merge_bounds = lonlat_bounds
                 mosaic_arr, mosaic_transform = merge(datasets, bounds=merge_bounds)
                 mosaic_arr = mosaic_arr[0]  # merge returns (bands, h, w)
                 nodata = datasets[0].nodata
@@ -629,11 +670,8 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
         # Reproject windowed source to EPSG:3857 output grid.
         # dst_arr initialised to NaN so any destination pixel not written by
         # the warp (outside source coverage) is correctly treated as no-data.
-        dst_transform = Affine(
-            (wm.right - wm.left) / size, 0.0, wm.left,
-            0.0, -(wm.top - wm.bottom) / size, wm.top
-        )
-        dst_arr = np.full((size, size), np.nan, dtype=np.float32)
+        dst_transform = _make_dst_transform(render_bounds, render_size)
+        dst_arr = np.full((render_size, render_size), np.nan, dtype=np.float32)
 
         reproject(
             source=mosaic_arr,
@@ -654,7 +692,26 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
         flooded = finite & (dst_arr < float(slr_meters))
         del dst_arr
 
-        flooded = _keep_boundary_connected_flood(flooded)
+        if water_mask_mode != "none" and WATER_MASK_PROVIDER is not None:
+            try:
+                water_mask_arr = WATER_MASK_PROVIDER.mask_for_bounds(
+                    lonlat_bounds,
+                    flooded.shape,
+                    dst_transform,
+                    "EPSG:3857",
+                )
+                if water_mask_arr is not None:
+                    flooded &= water_mask_arr
+            except Exception:
+                logger.warning("Water mask application failed; continuing without mask", exc_info=True)
+
+        if connectivity_mode != "none":
+            flooded = _keep_boundary_connected_flood(flooded)
+
+        if connectivity_mode == "full":
+            start = size
+            end = start + size
+            flooded = flooded[start:end, start:end]
 
         if not np.any(flooded):
             return _get_transparent_tile(size)
@@ -676,7 +733,9 @@ def get_tile(z: int, x: int, y: int,
              slr: Optional[float] = None,
              scenario: Optional[str] = None,
              year: Optional[int] = None,
-             pct: int = 50):
+             pct: int = 50,
+             connectivity: str = "boundary",
+             water_mask: str = "none"):
     """Return a PNG flood overlay tile for z/x/y.
 
     Two modes:
@@ -692,6 +751,11 @@ def get_tile(z: int, x: int, y: int,
 
     b = mercantile.bounds(x, y, z)
 
+    if connectivity not in {"boundary", "none", "full"}:
+        raise HTTPException(status_code=400, detail="Invalid connectivity mode")
+    if water_mask not in {"none", "raster"}:
+        raise HTTPException(status_code=400, detail="Invalid water mask mode")
+
     # Resolve effective SLR
     if slr is not None:
         slr_meters = slr
@@ -704,12 +768,12 @@ def get_tile(z: int, x: int, y: int,
     else:
         slr_meters = 1.0  # default fallback
 
-    tile_names = find_tiles_in_bbox(b.west, b.south, b.east, b.north)
+    tile_names = find_tiles_in_bbox(b.west, b.south, b.east, b.north, padding_deg=1.0 if connectivity == "full" else 0.0)
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names if name in TILE_INDEX]
 
     # L2 cache: Redis (shared across workers, survives restarts)
     _r = _get_redis()
-    _rkey = f"tile:{z}:{x}:{y}:{round(slr_meters, 3):.3f}"
+    _rkey = f"tile:{z}:{x}:{y}:{round(slr_meters, 3):.3f}:{connectivity}:{water_mask}"
     if _r is not None:
         try:
             _cached = _r.get(_rkey)
@@ -728,7 +792,7 @@ def get_tile(z: int, x: int, y: int,
             pass
 
     try:
-        png_bytes = render_tile_png_multi_cached(tuple(tile_paths), round(slr_meters, 3), z, x, y)
+        png_bytes = render_tile_png_multi_cached(tuple(tile_paths), round(slr_meters, 3), z, x, y, 256, connectivity, water_mask)
         if _r is not None:
             try:
                 _r.setex(_rkey, 3600, png_bytes)

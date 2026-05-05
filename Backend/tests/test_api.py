@@ -139,6 +139,16 @@ class TestGetTileValidation:
         assert resp.status_code == 200
         assert "image/png" in resp.headers["content-type"]
 
+    def test_invalid_connectivity_rejected(self, client):
+        c, _ = client
+        resp = c.get("/tiles/5/0/0?slr=1.0&connectivity=bogus")
+        assert resp.status_code == 400
+
+    def test_invalid_water_mask_rejected(self, client):
+        c, _ = client
+        resp = c.get("/tiles/5/0/0?slr=1.0&water_mask=bogus")
+        assert resp.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # /tiles/{z}/{x}/{y} — with a real in-memory DEM tile
@@ -212,6 +222,33 @@ class TestGetTileWithDem:
         resp = c.get(f"/tiles/{t.z}/{t.x}/{t.y}?slr=2.0")
         assert resp.status_code == 200
         assert resp.content == app_module._get_transparent_tile()
+
+    def test_connectivity_and_water_mask_params_flow_into_renderer(self, client, tmp_path):
+        c, app_module = client
+        dem_bytes = _make_dem_bytes(elevation=0.5)
+        dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
+        dem_path.write_bytes(dem_bytes)
+
+        tile_name = "DiluviumDEM_N35_00_E139_00"
+        app_module.TILE_INDEX = {
+            tile_name: {
+                "bounds": (139.0, 35.0, 140.0, 36.0),
+                "lat_min": 35.0, "lat_max": 36.0,
+                "lon_min": 139.0, "lon_max": 140.0,
+                "path": str(dem_path),
+            }
+        }
+        app_module.TILE_GRID = defaultdict(list)
+        app_module.TILE_GRID[(35, 139)].append(tile_name)
+
+        with patch.object(app_module, "render_tile_png_multi_cached", return_value=app_module._get_transparent_tile()) as render_mock:
+            resp = c.get("/tiles/9/156/200?slr=2.0&connectivity=full&water_mask=raster")
+
+        assert resp.status_code == 200
+        assert render_mock.called
+        _, _, _, _, _, _, connectivity_mode, water_mask_mode = render_mock.call_args.args
+        assert connectivity_mode == "full"
+        assert water_mask_mode == "raster"
 
 
 # ---------------------------------------------------------------------------

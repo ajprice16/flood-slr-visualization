@@ -9,7 +9,7 @@
  * without a backend.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // Mock maplibre-gl before any imports that may load it indirectly
@@ -39,41 +39,58 @@ global.fetch = vi.fn().mockResolvedValue({
 
 import App from '../App';
 
+async function enterMap() {
+    render(<App />);
+    await act(async () => {
+        fireEvent.click(screen.getByLabelText('I acknowledge and accept the disclaimer'));
+        fireEvent.click(screen.getByRole('button', { name: /Proceed to Interactive Map/i }));
+    });
+}
+
 describe('App', () => {
     it('renders without crashing', () => {
         const { container } = render(<App />);
         expect(container).toBeTruthy();
     });
 
-    it('shows Start Story button initially', () => {
+    it('shows the landing page initially', () => {
         render(<App />);
-        expect(screen.getByText('Start Story')).toBeTruthy();
+        expect(screen.getByText('Flood & Sea Level Rise Visualization')).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Proceed to Interactive Map/i })).toBeDisabled();
     });
 
-    it('shows IPCC Projections sidebar initially', () => {
-        render(<App />);
+    it('shows IPCC Projections sidebar initially', async () => {
+        await enterMap();
         expect(screen.getByText('IPCC Projections')).toBeTruthy();
     });
 
-    it('shows scenario selector dropdown', () => {
-        render(<App />);
+    it('shows scenario selector dropdown', async () => {
+        await enterMap();
         expect(screen.getByText(/SSP2-4.5/i)).toBeTruthy();
     });
 
-    it('shows projection year slider', () => {
-        render(<App />);
+    it('shows projection year slider', async () => {
+        await enterMap();
         expect(screen.getByDisplayValue('2100')).toBeTruthy();
     });
 
-    it('shows percentile buttons', () => {
-        render(<App />);
+    it('shows percentile buttons', async () => {
+        await enterMap();
         expect(screen.getByText(/Low \(5th\)/)).toBeTruthy();
         expect(screen.getByText(/Median \(50th\)/)).toBeTruthy();
         expect(screen.getByText(/High \(95th\)/)).toBeTruthy();
     });
 
+    it('shows connectivity and water mask controls', async () => {
+        await enterMap();
+        expect(screen.getByText('Connectivity')).toBeTruthy();
+        expect(screen.getByText('Water Mask')).toBeTruthy();
+        expect(screen.getByText('3x3 Mosaic')).toBeTruthy();
+        expect(screen.getByText('Raster (if configured)')).toBeTruthy();
+    });
+
     it('toggles into story mode and hides sidebar', async () => {
-        render(<App />);
+        await enterMap();
         const btn = screen.getByText('Start Story');
 
         await act(async () => {
@@ -89,7 +106,7 @@ describe('App', () => {
     });
 
     it('exits story mode when Exit Story is clicked', async () => {
-        render(<App />);
+        await enterMap();
         await act(async () => {
             fireEvent.click(screen.getByText('Start Story'));
         });
@@ -101,7 +118,7 @@ describe('App', () => {
     });
 
     it('closes story panel when × is clicked inside StoryMap', async () => {
-        render(<App />);
+        await enterMap();
         await act(async () => {
             fireEvent.click(screen.getByText('Start Story'));
         });
@@ -112,8 +129,8 @@ describe('App', () => {
     });
 
     it('changes scenario when dropdown changes', async () => {
-        render(<App />);
-        const select = screen.getByRole('combobox');
+        await enterMap();
+        const select = screen.getAllByRole('combobox')[0];
         await act(async () => {
             fireEvent.change(select, { target: { value: 'ssp585' } });
         });
@@ -121,7 +138,7 @@ describe('App', () => {
     });
 
     it('changes year when slider moves', async () => {
-        render(<App />);
+        await enterMap();
         const slider = screen.getByRole('slider');
         await act(async () => {
             fireEvent.change(slider, { target: { value: '2050' } });
@@ -130,7 +147,7 @@ describe('App', () => {
     });
 
     it('changes percentile when button clicked', async () => {
-        render(<App />);
+        await enterMap();
         await act(async () => {
             fireEvent.click(screen.getByText(/Low \(5th\)/));
         });
