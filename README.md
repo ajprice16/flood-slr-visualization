@@ -10,6 +10,21 @@ Flood & Sea Level Rise Visualization is a containerized geospatial web applicati
 - Regional flood analysis with estimated affected population from WorldPop rasters.
 - Story mode with curated city narratives for guided exploration.
 
+## Documentation
+
+Full documentation is in the [GitHub Wiki](https://github.com/ajprice16/flood-slr-visualization/wiki):
+
+- [Getting Started](https://github.com/ajprice16/flood-slr-visualization/wiki/Getting-Started) — install, data setup, Docker
+- [User Guide](https://github.com/ajprice16/flood-slr-visualization/wiki/User-Guide) — map controls and features
+- [Architecture](https://github.com/ajprice16/flood-slr-visualization/wiki/Architecture) — system design and data flow
+- [API Reference](https://github.com/ajprice16/flood-slr-visualization/wiki/API-Reference) — all REST endpoints
+- [Story Mode](https://github.com/ajprice16/flood-slr-visualization/wiki/Story-Mode) — guided city narratives
+- [Deployment](https://github.com/ajprice16/flood-slr-visualization/wiki/Deployment) — production setup (Jetstream2, Caddy, HTTPS)
+- [Configuration](https://github.com/ajprice16/flood-slr-visualization/wiki/Configuration) — environment variables and tuning
+- [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources) — datasets and credits
+- [Troubleshooting](https://github.com/ajprice16/flood-slr-visualization/wiki/Troubleshooting) — common issues
+- [Development](https://github.com/ajprice16/flood-slr-visualization/wiki/Development) — local dev workflow and tests
+
 ## Architecture
 
 The application is split into three services orchestrated with Docker Compose:

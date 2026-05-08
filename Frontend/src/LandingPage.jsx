@@ -159,7 +159,7 @@ export default function LandingPage({ onProceed }) {
                         }}>
                             {/* Documentation */}
                             <a
-                                href="https://github.com/ajprice16/flood-slr-visualization#readme"
+                                href="https://github.com/ajprice16/flood-slr-visualization/wiki"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{
