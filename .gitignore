@@ -2,6 +2,9 @@
 *.tif
 *.tiff
 *.geotiff
+Backend/data
+Backend/dem
+Backend/wp_2020
 wp_2020/
 tiles_*/
 
