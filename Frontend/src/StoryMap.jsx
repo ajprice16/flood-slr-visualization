@@ -60,6 +60,8 @@ export default function StoryMap({ stories, currentIndex, onNavigate, onClose, s
                     {story.name}
                 </h2>
                 <button
+                    type="button"
+                    aria-label="Close story panel"
                     onClick={onClose}
                     style={{
                         background: "none",
@@ -139,6 +141,8 @@ export default function StoryMap({ stories, currentIndex, onNavigate, onClose, s
                 background: "#fff"
             }}>
                 <button
+                    type="button"
+                    aria-label="Previous story"
                     onClick={() => onNavigate(currentIndex - 1)}
                     disabled={currentIndex === 0}
                     style={{
@@ -156,6 +160,8 @@ export default function StoryMap({ stories, currentIndex, onNavigate, onClose, s
                 </span>
 
                 <button
+                    type="button"
+                    aria-label="Next story"
                     onClick={() => onNavigate(currentIndex + 1)}
                     disabled={currentIndex === stories.length - 1}
                     style={{

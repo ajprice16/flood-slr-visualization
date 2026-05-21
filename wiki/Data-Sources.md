@@ -126,10 +126,10 @@ precedence over the ICE-6G_C model.
 **How VLM is combined:**
 ```
 effective_slr = ipcc_base_slr + vlm_offset
-vlm_offset    = vlm_rate_mm_yr / 1000 × (year − 2000)
+vlm_offset    = −vlm_rate_mm_yr / 1000 × (year − 2005)
 ```
 
-Positive `vlm_rate_mm_yr` = land sinking = more flooding than the IPCC base value.
+Negative `vlm_rate_mm_yr` = land sinking (subsidence) = more flooding than the IPCC base value.
 
 ---
 

@@ -15,7 +15,7 @@ set in `docker-compose.yml` (with defaults) and overridden by `.env` files in `d
 | `GDAL_CACHEMAX` | `2048` | GDAL block cache in MB. Increase for large DEM tiles to reduce re-reads. |
 | `GDAL_NUM_THREADS` | `1` | GDAL internal threads per operation. Keep at 1 when running many uvicorn workers. |
 | `OMP_NUM_THREADS` | `1` | OpenMP threads for NumPy/SciPy. Keep at 1 when running many uvicorn workers. |
-| `TRUSTED_HOSTS` | `localhost,127.0.0.1,gateway,caddy` | Comma-separated list of allowed `Host` headers. Add your public hostname here. |
+| `TRUSTED_HOSTS` | `localhost,127.0.0.1,gateway,caddy` | Comma-separated host list passed to TrustedHost middleware. The app currently appends `*` at runtime to avoid proxy host-header false negatives. |
 | `CORS_ALLOW_ORIGINS` | `http://localhost,http://127.0.0.1` | Comma-separated CORS origins. Add `https://your-domain.example.org` for production. |
 | `REDIS_URL` | `redis://redis:6379/0` | Redis URL for L2 tile cache. Leave unset to disable Redis and use only L1 LRU. |
 | `DEM_BUCKET` | _(empty)_ | DigitalOcean Spaces bucket name for remote DEM storage. Leave empty to use `Backend/dem/`. |
@@ -24,6 +24,7 @@ set in `docker-compose.yml` (with defaults) and overridden by `.env` files in `d
 | `SPACES_ACCESS_KEY` | _(empty)_ | Spaces S3-compatible access key. |
 | `SPACES_SECRET_KEY` | _(empty)_ | Spaces S3-compatible secret key. |
 | `SPACES_REGION` | `nyc3` | Spaces region name. |
+| `WATER_MASK_RASTER` | _(empty)_ | Optional raster path used when frontend requests `water_mask=raster`. |
 | `DEBUG_MODE` | _(unset)_ | Set to `true` to enable the `/api/debug/tiles_in_bbox` endpoint. |
 
 ---
@@ -43,6 +44,12 @@ Set at **build time** in `Frontend/.env` or passed via `VITE_*` args in the Dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GATEWAY_PORT_BIND` | `80:8080` | Docker port mapping for the gateway container. Use `127.0.0.1:8080:8080` in public-HTTPS mode (Caddy handles the external port). |
+
+## Public Edge (Caddy) Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CF_API_TOKEN` | _(required for public-up)_ | Cloudflare API token used by Caddy for DNS-01 ACME certificate issuance. |
 
 ---
 

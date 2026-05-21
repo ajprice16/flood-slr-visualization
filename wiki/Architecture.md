@@ -10,10 +10,16 @@ and a region analysis request.
 ```
 Browser
   │
-  │ HTTP (port 80 in dev, 443 in prod)
+  │ HTTP (dev/ip mode) or HTTPS (public mode)
   ▼
 ┌─────────────────────────────────────────────┐
-│  Gateway  (Nginx or Caddy)                  │
+│  Caddy edge (public HTTPS mode only)        │
+│  TLS + public 80/443                        │
+└─────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────┐
+│  Gateway (Nginx)                            │
 │  /api/*  → backend:8000                     │
 │  /*      → frontend:8080                    │
 └─────────────────────────────────────────────┘
@@ -39,8 +45,9 @@ Browser
   └─────────┘
 ```
 
-All four services run as Docker containers on an isolated `slr-net` bridge network.
-Only the gateway exposes a host port.
+Base stack services (`backend`, `redis`, `frontend`, `gateway`) run on an isolated `slr-net`
+bridge network. In `public-up` mode, `caddy` is added in front of `gateway`, and `gateway`
+is bound to localhost while Caddy exposes public ports 80/443.
 
 ---
 
@@ -179,7 +186,7 @@ GET /api/analyze_region?lon_min=...&lat_min=...&lon_max=...&lat_max=...
 The `TILE_CACHE_SIZE` environment variable sets the LRU maxsize (default 512 entries, Docker
 Compose default 2048).
 
-> **Note:** Browser caching is intentionally set to 1 hour despite the `max-age` header. The
+> **Note:** Browser caching is intentionally set to 1 hour via the `max-age` header. The
 > tile URL includes the full scenario+year+pct+connectivity+water_mask parameters, so changing
 > any control generates new URLs and bypasses stale cached tiles.
 
@@ -204,9 +211,9 @@ a handful of candidate DEM tiles regardless of how many total tiles are loaded.
 vlm.resolve_vlm_offset(lat, lon, year)
 
 1. GPS stations (MIDAS): find nearest within 0.5° radius
-   → interpolate mm/yr rate × (year − 2000) → meters
+   → interpolate mm/yr rate × (year − 2005) → meters
 2. GIA grid (ICE-6G_C): nearest-neighbor lookup
-   → interpolate mm/yr rate × (year − 2000) → meters
+   → interpolate mm/yr rate × (year − 2005) → meters
 3. Fallback: 0 meters
 ```
 

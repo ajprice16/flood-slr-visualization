@@ -69,9 +69,15 @@ Edit `deploy/.env.public`:
 
 ```dotenv
 GATEWAY_PORT_BIND=127.0.0.1:8080:8080
-TRUSTED_HOSTS=localhost,127.0.0.1,gateway,caddy,your-domain.example.org
-CORS_ALLOW_ORIGINS=https://your-domain.example.org
+TRUSTED_HOSTS=localhost,127.0.0.1,gateway,caddy,sea-level-rise.org,oursealevel.org
+CORS_ALLOW_ORIGINS=https://sea-level-rise.org,https://oursealevel.org
+CF_API_TOKEN=your-cloudflare-api-token
 ```
+
+If you are using different public hostnames, update both:
+
+1. `deploy/.env.public` (`TRUSTED_HOSTS`, `CORS_ALLOW_ORIGINS`)
+2. `deploy/Caddyfile` site blocks
 
 ---
 
@@ -115,14 +121,15 @@ obtain certificates.
 ./deploy/manage.sh public-up
 ```
 
-Caddy provisions and renews TLS certificates via HTTP-01 ACME challenge automatically.
+Caddy provisions and renews TLS certificates using Cloudflare DNS-01 (configured in
+`deploy/Caddyfile`), so `CF_API_TOKEN` must be set in `deploy/.env.public`.
 
 ---
 
-## 5. Cloudflare Proxy (optional)
+## 5. Cloudflare DNS and Proxy
 
-If you proxy traffic through Cloudflare (orange cloud), HTTP-01 ACME fails because
-Cloudflare intercepts port 80. Use DNS-01 instead:
+Public mode in this repository is designed for Cloudflare-proxied DNS (orange cloud)
+with DNS-01 certificate issuance:
 
 1. Create a Cloudflare API token with `Zone.Zone: Read` and `Zone.DNS: Edit` permissions.
 2. Add to `deploy/.env.public`:
@@ -140,13 +147,12 @@ Caddy uses the token for DNS-01 ACME challenges while Cloudflare proxies traffic
 
 ```bash
 ./deploy/manage.sh health
-curl -I https://your-domain.example.org/api/health
+curl -s https://your-domain.example.org/api/health
 ```
 
 Expected:
 
 ```
-HTTP/2 200
 {"status":"ok","tiles_indexed":842}
 ```
 

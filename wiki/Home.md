@@ -20,6 +20,7 @@ projection year, and reports the estimated number of people affected in the visi
 | Explore the REST API | [API Reference](API-Reference) |
 | Take a guided city tour | [Story Mode](Story-Mode) |
 | Deploy to production | [Deployment](Deployment) |
+| Launch hardening checklist | [Launch Checklist](Launch-Checklist) |
 | Tune environment variables | [Configuration](Configuration) |
 | Learn about the data | [Data Sources](Data-Sources) |
 | Fix a broken install | [Troubleshooting](Troubleshooting) |

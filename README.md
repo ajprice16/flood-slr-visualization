@@ -20,6 +20,7 @@ Full documentation is in the [GitHub Wiki](https://github.com/ajprice16/flood-sl
 - [API Reference](https://github.com/ajprice16/flood-slr-visualization/wiki/API-Reference) — all REST endpoints
 - [Story Mode](https://github.com/ajprice16/flood-slr-visualization/wiki/Story-Mode) — guided city narratives
 - [Deployment](https://github.com/ajprice16/flood-slr-visualization/wiki/Deployment) — production setup (Jetstream2, Caddy, HTTPS)
+- [Launch Checklist](https://github.com/ajprice16/flood-slr-visualization/wiki/Launch-Checklist) — pre-announcement hardening checklist
 - [Configuration](https://github.com/ajprice16/flood-slr-visualization/wiki/Configuration) — environment variables and tuning
 - [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources) — datasets and credits
 - [Troubleshooting](https://github.com/ajprice16/flood-slr-visualization/wiki/Troubleshooting) — common issues
@@ -35,7 +36,7 @@ The application is split into three services orchestrated with Docker Compose:
 
 Core request flow:
 
-1. The frontend requests flood tiles from `/api/tiles/{z}/{x}/{y}` with `scenario`, `year`, and `pct` query parameters.
+1. The frontend requests flood tiles from `/api/tiles/{z}/{x}/{y}` with `scenario`, `year`, `pct`, and optional `connectivity` / `water_mask` query parameters.
 2. The backend resolves the effective sea level rise for the tile center using IPCC AR6 projections plus vertical land motion adjustments.
 3. Intersecting DEM tiles are merged, reprojected to Web Mercator, thresholded against the resolved water level, and returned as transparent PNG overlays.
 
@@ -114,16 +115,25 @@ Main endpoints exposed through the gateway:
 - `GET /api/tiles/{z}/{x}/{y}?scenario=ssp585&year=2150&pct=50`
 - `GET /api/analyze_region?lon_min=...&lat_min=...&lon_max=...&lat_max=...&scenario=ssp245&year=2100&pct=50`
 - `GET /api/resolve_slr?lat=...&lon=...&scenario=ssp245&year=2100&pct=50`
+- `GET /api/projection_info?lat=...&lon=...`
 - `GET /api/health`
+- `GET /api/stats`
 - `GET /api/tiles/info`
-- `GET /api/debug/tiles_in_bbox?lon_min=...&lat_min=...&lon_max=...&lat_max=...`
+- `GET /api/debug/tiles_in_bbox?lon_min=...&lat_min=...&lon_max=...&lat_max=...` (only when `DEBUG_MODE=true`)
 
 ## Configuration
 
 Environment variables currently used by the application:
 
 - `VITE_API_BASE`: frontend API base path. Defaults to `/api` in gateway mode.
-- `TILE_CACHE_SIZE`: backend in-memory LRU cache size for rendered tiles. Docker Compose defaults to `512`.
+- `TILE_CACHE_SIZE`: backend in-memory LRU cache size for rendered tiles. Docker Compose defaults to `2048` (fallback default is `512`).
+- `TRUSTED_HOSTS`: host validation input list. The backend appends `*` at runtime to avoid proxy host-header false negatives.
+- `CORS_ALLOW_ORIGINS`: comma-separated allowed browser origins.
+- `REDIS_URL`: optional shared Redis cache/session backend.
+- `DEM_BUCKET` / `WORLDPOP_BUCKET`: optional DigitalOcean Spaces bucket names for remote raster access.
+- `SPACES_ENDPOINT_URL`, `SPACES_ACCESS_KEY`, `SPACES_SECRET_KEY`, `SPACES_REGION`: Spaces access settings.
+- `DEBUG_MODE=true`: enables `/api/debug/tiles_in_bbox`.
+- `WATER_MASK_RASTER`: optional raster path for the `water_mask=raster` mode.
 
 ## Story Content
 
@@ -140,7 +150,7 @@ Current story locations include:
 ## Operational Notes
 
 - Large raster files are excluded by `.gitignore` and should be managed outside version control.
-- Tile responses are intentionally not browser-cached to avoid stale overlays after data or rendering updates.
+- Tile responses are cacheable for 1 hour (`Cache-Control: public, max-age=3600`). Cache keys include scenario/year/pct/connectivity/water_mask, so changing controls naturally requests new tile URLs.
 - If the view spans more than 40 degrees in latitude or longitude, regional analysis is skipped until the map is zoomed in.
 
 ## Troubleshooting
