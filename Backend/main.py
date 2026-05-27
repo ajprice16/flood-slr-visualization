@@ -735,7 +735,8 @@ def get_tile(z: int, x: int, y: int,
              year: Optional[int] = None,
              pct: int = 50,
              connectivity: str = "boundary",
-             water_mask: str = "none"):
+             water_mask: str = "none",
+             vlm_enabled: bool = Query(True, alias="vlm")):
     """Return a PNG flood overlay tile for z/x/y.
 
     Two modes:
@@ -763,7 +764,7 @@ def get_tile(z: int, x: int, y: int,
         center_lat = (b.south + b.north) / 2
         center_lon = (b.west + b.east) / 2
         base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
-        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year)
+        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year) if vlm_enabled else 0.0
         slr_meters = (base_slr or 0.0) + vlm_offset
     else:
         slr_meters = 1.0  # default fallback
@@ -823,6 +824,7 @@ def analyze_region(
     year: Optional[int] = Query(None, ge=2020, le=2200),
     pct: int = Query(50, ge=1, le=99),
     sample_limit: int = Query(100, ge=1, le=10000),
+    vlm_enabled: bool = Query(True, alias="vlm"),
 ):
     """Analyze a geographic region for flood risk with SLR.
 
@@ -838,7 +840,7 @@ def analyze_region(
         effective_slr = slr
     elif scenario and year:
         base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
-        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year)
+        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year) if vlm_enabled else 0.0
         effective_slr = (base_slr or 0.0) + vlm_offset
     else:
         effective_slr = 1.0
@@ -1126,7 +1128,8 @@ def analyze(city: str, slr: float, sample_limit: int = 500, include_points: bool
 
 @app.get("/resolve_slr")
 def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
-                         year: int, pct: int = 50):
+                         year: int, pct: int = 50,
+                         vlm_enabled: bool = Query(True, alias="vlm")):
     """Resolve effective SLR for a location under a given scenario.
 
     Returns IPCC regional projection + VLM correction combined.
@@ -1136,7 +1139,7 @@ def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
         raise HTTPException(status_code=400,
                             detail=f"Invalid scenario '{scenario}' or percentile {pct}")
 
-    vlm_offset = vlm.resolve_vlm_offset(lat, lon, year)
+    vlm_offset = vlm.resolve_vlm_offset(lat, lon, year) if vlm_enabled else 0.0
     vlm_info = vlm.get_vlm_info(lat, lon)
 
     return {
@@ -1144,7 +1147,7 @@ def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
         "ipcc_slr_meters": round(base_slr, 4),
         "vlm_offset_meters": round(vlm_offset, 4),
         "vlm_rate_mm_yr": vlm_info["vlm_mm_yr"],
-        "vlm_source": vlm_info["source"],
+        "vlm_source": vlm_info["source"] if vlm_enabled else "none",
         "projection_source": "regional" if projection.is_loaded() else "global_mean",
         "scenario": scenario,
         "year": year,

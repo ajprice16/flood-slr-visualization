@@ -20,6 +20,7 @@ export default function App() {
     const [percentile, setPercentile] = useState(50);
     const [connectivityMode, setConnectivityMode] = useState("boundary");
     const [waterMaskMode, setWaterMaskMode] = useState("none");
+    const [vlmEnabled, setVlmEnabled] = useState(true);
     const [resolvedSlr, setResolvedSlr] = useState(null);
     const [floodData, setFloodData] = useState(null);
     const [pending, setPending] = useState(false);
@@ -103,13 +104,13 @@ export default function App() {
         const centerLat = (bbox.lat_min + bbox.lat_max) / 2;
         const centerLon = (bbox.lon_min + bbox.lon_max) / 2;
         let cancelled = false;
-        fetchResolvedSlr(centerLat, centerLon, scenario, year, percentile)
+        fetchResolvedSlr(centerLat, centerLon, scenario, year, percentile, vlmEnabled)
             .then(result => {
                 if (!cancelled) setResolvedSlr(result.data);
             })
             .catch(() => {}); // non-critical, silent fail
         return () => { cancelled = true; };
-    }, [bbox?.lon_min, bbox?.lat_min, scenario, year, percentile]);
+    }, [bbox?.lon_min, bbox?.lat_min, scenario, year, percentile, vlmEnabled]);
 
     // Debounced analysis on bbox or scenario change
     useEffect(() => {
@@ -124,7 +125,7 @@ export default function App() {
         const handle = setTimeout(async () => {
             const start = performance.now();
             try {
-                const result = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
+                const result = await analyzeRegion(bbox, { scenario, year, percentile, vlmEnabled }, { signal: controller.signal });
                 setFloodData(result.data);
                 setLastRequest({ status: result.status, ok: result.ok, durationMs: result.durationMs });
             } catch (e) {
@@ -140,7 +141,7 @@ export default function App() {
             controller.abort();
             clearTimeout(handle);
         };
-    }, [bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, scenario, year, percentile, forceRefresh]);
+    }, [bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, scenario, year, percentile, vlmEnabled, forceRefresh]);
 
     const cancelAndRestart = async () => {
         try {
@@ -325,6 +326,18 @@ export default function App() {
                     </select>
                 </div>
 
+                {/* VLM toggle */}
+                <div style={{ marginBottom: "12px" }}>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                        <input
+                            type="checkbox"
+                            checked={vlmEnabled}
+                            onChange={e => setVlmEnabled(e.target.checked)}
+                        />
+                        Vertical land motion (VLM)
+                    </label>
+                </div>
+
                 {/* Resolved SLR Display */}
                 {resolvedSlr && (
                     <div style={{
@@ -416,6 +429,7 @@ export default function App() {
                     resolvedSlr={effectiveSlr}
                     connectivityMode={connectivityMode}
                     waterMaskMode={waterMaskMode}
+                    vlmEnabled={vlmEnabled}
                     onBoundsChange={handleBoundsChange}
                     pending={pending}
                     lastRequest={lastRequest}
