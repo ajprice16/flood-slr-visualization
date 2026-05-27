@@ -75,8 +75,7 @@ const apiBase = origin.includes(':5173') ? origin.replace(':5173', ':8000') : '/
 
 So you do **not** need Nginx or the gateway running in local dev.
 
-> 📸 **Screenshot needed:** VS Code with `Backend/main.py` open and the integrated terminal
-> showing uvicorn running, side-by-side with a browser at `localhost:5173`.
+![Local dev: backend + frontend running](images/dev-vscode-uvicorn.png)
 
 ---
 

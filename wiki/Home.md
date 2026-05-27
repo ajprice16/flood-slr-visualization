@@ -1,84 +1,138 @@
 # Flood & Sea Level Rise Visualization — Wiki Home
 
-**Flood & Sea Level Rise Visualization** is an open, containerized geospatial web application for
-exploring coastal inundation under multiple IPCC AR6 sea level rise scenarios. It renders
-on-demand flood overlay tiles on a satellite basemap, lets you choose a climate scenario and
-projection year, and reports the estimated number of people affected in the visible region.
+**An interactive map of how high the sea may rise — and who lives in the way.**
 
-> 📸 **Screenshot needed:** Landing page with disclaimer dialog, then the full interactive map
-> with the sidebar, satellite imagery, and a blue flood overlay visible over Miami.
+🌐 **Live demo:** <https://oursealevel.org> · <https://sea-level-rise.org>
+💻 **Source:** [github.com/ajprice16/flood-slr-visualization](https://github.com/ajprice16/flood-slr-visualization)
+
+![Interactive map with Miami flood overlay](images/home-hero.png)
 
 ---
 
-## Quick Links
+## What it does
 
-| Topic | Page |
-|-------|------|
-| Install and run the app | [Getting Started](Getting-Started) |
-| Use the interactive map | [User Guide](User-Guide) |
-| Understand the system design | [Architecture](Architecture) |
-| Explore the REST API | [API Reference](API-Reference) |
+Choose an IPCC sea level rise scenario, a year between 2030 and 2150, and a confidence
+percentile. The map shows — in real time — which coastlines fall below the resulting water
+level, and estimates how many people live in the inundated area today.
+
+It is built so that every step from raw science to the blue overlay on the screen is
+inspectable:
+
+- The **sea level projections** come from the IPCC AR6 WG1 Regional Sea-Level dataset
+  (Garner et al., 2022). The map looks up the *nearest IPCC station* to the tile center,
+  not a single global average.
+- **Vertical land motion** (subsidence and post-glacial rebound) is applied per location using
+  MIDAS GPS velocities and the ICE-6G_C glacial isostatic adjustment model.
+- **Elevations** come from DiluviumDEM, a coastal-optimized DEM that corrects known overestimates
+  of SRTM in low-lying coastal areas.
+- **Population exposure** is computed from WorldPop 2020 ~1 km gridded population.
+
+Each tile is rendered on demand from the source elevation data — nothing is pre-baked.
+
+---
+
+## Pick your starting page
+
+### I want to explore
+
+| If you want to… | Go to |
+|-----------------|-------|
+| Try the live tool right now | <https://oursealevel.org> |
+| Understand every control in the map | [User Guide](User-Guide) |
 | Take a guided city tour | [Story Mode](Story-Mode) |
-| Deploy to production | [Deployment](Deployment) |
-| Launch hardening checklist | [Launch Checklist](Launch-Checklist) |
+| Read the science and citations | [Data Sources](Data-Sources) |
+
+### I want to run or extend it
+
+| If you want to… | Go to |
+|-----------------|-------|
+| Run it locally with Docker | [Getting Started](Getting-Started) |
+| Set up a development environment | [Development](Development) |
+| Deploy it publicly with HTTPS | [Deployment](Deployment) |
+| Understand the system design | [Architecture](Architecture) |
+| Use the REST API | [API Reference](API-Reference) |
 | Tune environment variables | [Configuration](Configuration) |
-| Learn about the data | [Data Sources](Data-Sources) |
-| Fix a broken install | [Troubleshooting](Troubleshooting) |
-| Set up a dev environment | [Development](Development) |
+| Pre-launch hardening | [Launch Checklist](Launch-Checklist) |
+| Fix something that's broken | [Troubleshooting](Troubleshooting) |
 
 ---
 
-## Feature Highlights
+## Feature tour
 
-### Scenario-Based Sea Level Rise
+### Scenario-based sea level rise
 
-Choose from four IPCC AR6 Shared Socioeconomic Pathway (SSP) scenarios, select a projection
-year from 2030 to 2150, and pick a confidence percentile (5th / 50th / 95th). The backend
-resolves the effective SLR for the tile center using regional IPCC AR6 data when available,
-falling back to embedded global-mean values.
+Four IPCC AR6 Shared Socioeconomic Pathway (SSP) scenarios, projection years from 2030 to
+2150 in 10-year steps, and three confidence percentiles (5th, 50th, 95th). The backend
+resolves the effective sea level for the tile center using the regional IPCC AR6 dataset
+when present, falling back to an embedded global-mean table from IPCC AR6 Table 9.9.
 
-> 📸 **Screenshot needed:** Sidebar showing the scenario dropdown on "SSP5-8.5 (Very High)",
-> year slider at 2100, and the Effective SLR box displaying a value with VLM correction.
+![Sidebar with Effective SLR breakdown](images/sidebar-effective-slr.png)
 
-### Vertical Land Motion (VLM) Correction
+### Vertical land motion correction
 
-Many coastal cities are sinking due to groundwater extraction, sediment compaction, or glacial
-isostatic adjustment (GIA). The backend applies a per-location VLM offset sourced from:
+Many coastal cities are *moving* relative to mean sea level. Tokyo Bay, the Bengal delta, and
+Jakarta are sinking; northern Scandinavia is rising. The tool corrects for this per location:
 
-- **MIDAS/NGL GPS velocities** — observed total VLM at tide-gauge stations
-- **ICE-6G_C GIA model** — global baseline for areas without GPS coverage
+- **MIDAS / NGL GPS velocities** — observed total VLM at GNSS stations worldwide
+- **ICE-6G_C GIA model** — used where there is no nearby GPS station
 
-### Population Impact Estimates
+A GPS station within 0.5° of the query point takes precedence over the GIA model. The
+correction is applied as a meters-per-year rate multiplied by `(year − 2005)`.
 
-When you zoom into a region, the app cross-references flooded DEM pixels with WorldPop 2020
-~1 km population rasters to estimate how many people live in the inundated area.
+### Population impact estimates
+
+When the viewport is small enough (< 40° in either dimension), the backend cross-references
+flooded DEM pixels with WorldPop 2020 ~1 km population rasters and reports the estimated
+population in the inundated area.
 
 ### Story Mode
 
 Five curated city narratives — Miami, New Orleans, Tokyo, Tabasco (Mexico), and Bangladesh —
-each pre-loaded with a recommended scenario and zoom level. Click **Start Story** to enter a
-full-screen guided tour.
+each pre-loaded with a recommended scenario and zoom level. The sidebar collapses and a
+story panel slides in from the left.
 
-### Connectivity Modes
+![Story Mode on Miami](images/story-mode-miami.png)
 
-Three options control which below-threshold pixels are colored blue:
+### Connectivity modes
 
-| Mode | Description |
-|------|-------------|
-| **Boundary** (default) | Only show flooding connected to the tile edge, filtering isolated inland basins |
-| **None** | Color every pixel below the SLR threshold, regardless of connectivity |
-| **3×3 Mosaic** | Expand the render area to a 3×3 tile neighborhood so flooding propagates across tile seams |
+Pure bathtub inundation overstates flooding by coloring isolated inland depressions blue. The
+tool offers three connectivity treatments:
+
+| Mode | Behaviour |
+|------|-----------|
+| **Boundary** (default) | Only color flood pixels connected to the tile edge. Removes isolated inland basins. |
+| **None** | Color every pixel below the threshold, regardless of ocean connectivity. |
+| **3×3 Mosaic** | Render a 3-tile-wide neighborhood so flooding propagates across tile seams, then crop to the center. |
+
+The default — Boundary — gives the closest approximation to realistic coastal inundation
+without requiring a full hydrodynamic model.
 
 ---
 
-## Technology Stack
+## What it is not
+
+This is **not** a hydrodynamic flood model. It does not represent:
+
+- Storm surge, waves, tides, or king tides
+- Levees, sea walls, pumps, or other coastal defenses
+- Drainage, runoff, or river flooding
+- Soil saturation or groundwater response
+- Time-varying ice-sheet dynamics beyond what the IPCC percentiles capture
+
+The flood overlay is a **static, threshold-based inundation surface** with connectivity
+filtering. Use it for *exposure and screening analysis*, not for engineering decisions. See
+the [Data Sources](Data-Sources) page for the full methodology and caveats.
+
+---
+
+## Technology stack
 
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18, Vite, MapLibre GL JS |
 | Backend | Python 3.11, FastAPI, Rasterio, NumPy, SciPy, Mercantile, Pillow |
-| Caching | In-memory LRU (default) + optional Redis L2 |
-| Reverse Proxy | Nginx (development / IP), Caddy (public HTTPS) |
+| Caching | In-memory LRU + optional Redis L2 |
+| Reverse Proxy | Nginx (dev/IP), Caddy (public HTTPS) |
 | Orchestration | Docker Compose |
 | Elevation Data | DiluviumDEM GeoTIFFs |
 | Population Data | WorldPop 2020 GeoTIFFs |
@@ -86,19 +140,20 @@ Three options control which below-threshold pixels are colored blue:
 
 ---
 
-## Repository Layout
+## Repository layout
 
 ```
 Backend/   FastAPI service — tile rendering, analysis, projection & VLM lookups
 Frontend/  React SPA — map UI, sidebar controls, story mode, landing page
 Gateway/   Nginx reverse proxy configuration
 deploy/    Production scripts, Caddyfile, environment templates
+wiki/      The pages you are reading
 ```
 
 ---
 
-## License
+## License and attribution
 
-No repository-wide open-source license is currently included. Treat the codebase as proprietary
-unless a license is added. Third-party datasets remain subject to their own terms.
-See [Data Sources](Data-Sources) for attribution details.
+The dataset and basemap providers retain their own licenses — see [Data Sources](Data-Sources)
+for a full attribution table. The source code in this repository is currently unlicensed;
+treat it as proprietary unless a license file is added.

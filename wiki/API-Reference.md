@@ -94,8 +94,7 @@ Render a 256×256 PNG flood overlay tile in the standard Web Mercator tile coord
 GET /api/tiles/10/300/400?scenario=ssp245&year=2100&pct=50&connectivity=boundary
 ```
 
-> 📸 **Screenshot needed:** The DevTools Network tab with a tiles request open, showing the
-> response as a blue-tinted PNG preview and the custom `X-Effective-SLR` response header.
+![Tile request in DevTools](images/api-network-tile.png)
 
 ---
 

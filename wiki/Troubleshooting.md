@@ -11,7 +11,7 @@ zoom and high SLR scenarios.
 
 ```bash
 curl http://localhost/api/health
-# Expected: {"status":"ok","tiles_indexed":842}
+# Expected: {"status":"ok","tiles_indexed":6293}
 ```
 
 If `tiles_indexed` is 0:

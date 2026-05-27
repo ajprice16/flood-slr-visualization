@@ -9,14 +9,12 @@ with a recommended scenario and year, and accompanied by a short narrative about
 
 Click **Start Story** in the top-right corner of the interactive map.
 
-> 📸 **Screenshot needed:** The map with the "Start Story" button highlighted (blue, top right).
+![Start Story button](images/story-start-button.png)
 
 The sidebar disappears and the story panel slides in from the left. The map flies to the first
 city (Miami) using a 2-second animated transition.
 
-> 📸 **Screenshot needed:** Full-screen story mode with the story panel on the left (showing
-> city name, narrative text, scenario badge, year, and prev/next navigation), and the map
-> filling the rest of the screen with Miami's flood overlay visible.
+![Story Mode on Miami](images/story-mode-miami.png)
 
 ---
 
@@ -54,8 +52,7 @@ combination of global SLR and local land subsidence. Much of the city sits at or
 elevation. Under SSP2-4.5 at 2100, significant portions of Miami Beach and the low-lying
 urban core are projected to be below the effective sea level.
 
-> 📸 **Screenshot needed:** Story mode on Miami — flood overlay covering Miami Beach and the
-> port area in blue, story panel visible on left.
+![Story Mode — Miami close-up](images/story-miami-detail.png)
 
 ---
 
@@ -74,8 +71,7 @@ below sea level and relying on levee systems. The story uses SSP5-8.5 to illustr
 emissions trajectory where subsidence and SLR combine to put the greater New Orleans basin
 well below projected sea level.
 
-> 📸 **Screenshot needed:** Story mode on New Orleans with the bowl-shaped city showing
-> extensive blue flood overlay, particularly in the Lower Ninth Ward area.
+![Story Mode — New Orleans](images/story-new-orleans.png)
 
 ---
 
@@ -125,8 +121,7 @@ The Ganges-Brahmaputra-Meghna delta is one of the world's largest river deltas a
 millions of people at or near sea level. Bangladesh is widely cited as one of the countries
 most vulnerable to sea level rise.
 
-> 📸 **Screenshot needed:** Story mode on Bangladesh with the delta region showing widespread
-> blue overlay at zoom 8, story panel on left.
+![Story Mode — Bangladesh delta](images/story-bangladesh.png)
 
 ---
 

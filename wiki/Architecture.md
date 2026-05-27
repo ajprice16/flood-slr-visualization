@@ -148,8 +148,7 @@ GET /api/tiles/{z}/{x}/{y}?scenario=ssp245&year=2100&pct=50
 7. Return PNG with Cache-Control: public, max-age=3600
 ```
 
-> 📸 **Screenshot needed:** Browser DevTools Network panel with a `/api/tiles/` request
-> selected, showing the response headers `X-Effective-SLR` and `X-Tiles-Used`.
+![DevTools showing tile response headers](images/arch-devtools-tiles.png)
 
 ---
 

@@ -153,7 +153,7 @@ curl -s https://your-domain.example.org/api/health
 Expected:
 
 ```
-{"status":"ok","tiles_indexed":842}
+{"status":"ok","tiles_indexed":6293}
 ```
 
 Live logs:

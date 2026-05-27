@@ -1,7 +1,65 @@
 # Data Sources
 
-This page describes every dataset the application uses, how it is obtained, and how it is
-processed at runtime.
+This page documents every dataset the tool uses, how it is processed, and — just as importantly
+— what the resulting flood overlay does and does not represent.
+
+---
+
+## Methodology in plain language
+
+For each tile the user looks at, the backend performs the same five-step computation:
+
+1. **Find the right sea level for *this* place.** Look up the nearest IPCC AR6 regional
+   sea-level station to the tile's center and read the projection curve for the chosen
+   scenario, year, and percentile. If the regional dataset is absent, fall back to an
+   embedded IPCC AR6 *global mean* table from Table 9.9.
+2. **Adjust for how the land is moving.** Add a vertical land motion (VLM) offset using the
+   nearest MIDAS GPS station within 0.5°; if there is none, use the ICE-6G_C glacial
+   isostatic adjustment grid; otherwise zero. The offset is `−rate_mm_yr ÷ 1000 × (year − 2005)`.
+   Subsidence (negative GPS rate) makes effective SLR larger.
+3. **Read the elevation.** Pull the intersecting region from DiluviumDEM with a windowed
+   `rasterio` read, reproject it into the 256×256 Web Mercator tile grid.
+4. **Apply the threshold and connectivity filter.** Mark every pixel whose elevation is below
+   the effective SLR as flooded; then (by default) keep only pixels connected to the tile
+   edge, so isolated inland depressions are not colored blue.
+5. **Render and cache.** Encode the flood mask as a translucent blue PNG and serve it.
+
+For population exposure, the same flood mask is intersected with WorldPop 2020 ~1 km
+population pixels and summed.
+
+For a full diagrammatic walk-through, see [Architecture](Architecture#tile-request-data-flow).
+
+---
+
+## What this model does and does not represent
+
+This is a **threshold-based "bathtub" inundation surface** with connectivity filtering. It is
+appropriate for first-order *exposure screening* and pedagogy. It is not appropriate for
+engineering decisions, evacuation planning, or insurance underwriting.
+
+The tool **does** account for:
+
+- Regional variation in sea level rise from the IPCC AR6 dataset (gravitational fingerprints
+  of ice melt, ocean dynamics, atmospheric pressure)
+- Vertical land motion from GPS observations and the ICE-6G_C GIA model
+- High-resolution coastal elevation from DiluviumDEM (which already corrects much of the
+  SRTM-era overestimation in low-lying coastal zones)
+- Connectivity: removing isolated inland depressions that would otherwise be colored as
+  flooded but cannot physically connect to the ocean
+
+The tool **does not** account for:
+
+- Storm surge, tides, wave run-up, or king tides
+- Levees, sea walls, pumps, breakwaters, or other coastal defenses
+- Drainage, runoff, river-flood interaction, or pluvial flooding
+- Soil saturation, groundwater rise, or salinization
+- Time-varying subsidence not captured in the linear MIDAS/ICE-6G_C trend
+- Ice-sheet dynamics beyond what the IPCC AR6 percentiles already capture
+- Population change between 2020 (WorldPop snapshot) and the projection year — population
+  numbers are *today's people on tomorrow's water*
+
+If you need any of the above, you need a hydrodynamic model (e.g. ADCIRC, Delft3D) and a
+projected demographic dataset.
 
 ---
 

@@ -63,3 +63,7 @@ Thumbs.db
 
 # Runtime session tracking files
 *.sessions
+
+# Internal planning artifacts (slide outlines, screenshot prompts, etc.)
+slides/
+wiki/SCREENSHOT_PROMPT.md

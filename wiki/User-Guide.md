@@ -4,6 +4,29 @@ This page explains every control in the interactive map and what each one does.
 
 ---
 
+## First time here? Read this once
+
+The tool answers a single question: *if seas rise by amount X, which coastlines fall under
+water and how many people live there?*
+
+You change three things in the sidebar:
+
+1. **Scenario** — how much greenhouse gas the world emits (low/medium/high/very high)
+2. **Year** — how far in the future you are asking about (2030 to 2150)
+3. **Percentile** — how cautious vs. pessimistic you want the estimate (5th / 50th / 95th)
+
+The blue overlay on the map is the land that ends up under water at those settings, after
+adjusting for whether the land itself is sinking or rising. The yellow box at the bottom of
+the sidebar tells you roughly how many people live in that area today.
+
+If you want a guided tour through five flood-vulnerable cities, click **Start Story** in the
+top-right corner of the map. See [Story Mode](Story-Mode) for details.
+
+For the scientific assumptions and what the model does and does not represent, see
+[Data Sources](Data-Sources#what-this-model-does-and-does-not-represent).
+
+---
+
 ## Interface Overview
 
 The application has three top-level views:
@@ -12,17 +35,13 @@ The application has three top-level views:
 2. **Interactive Map** — the main exploration tool with a sidebar on the left.
 3. **Story Mode** — full-screen guided city narratives (no sidebar).
 
-> 📸 **Screenshot needed:** Full-width screenshot of the interactive map with the sidebar
-> visible on the left and Miami's flood overlay (blue) on the right at roughly zoom 11.
-> Annotate: "Sidebar", "Map canvas", "Start Story button (top right)", "Status bar (top left
-> of map)", "Attribution (bottom left of map)".
+![Annotated interface overview](images/ui-overview-annotated.png)
 
 ---
 
 ## Landing Page
 
-> 📸 **Screenshot needed:** Landing page at full height, showing the purple gradient header,
-> disclaimer text, checkbox, "Proceed" button, and the 4 resource cards below.
+![Landing page full-height](images/landing-page-full.png)
 
 - Read the disclaimer. It explains that projections are scientific estimates, not certified
   engineering assessments.
@@ -37,7 +56,7 @@ The disclaimer is shown once per session. Refreshing the page shows it again.
 
 ### Scenario
 
-> 📸 **Screenshot needed:** Close-up of the Scenario dropdown open, showing all four SSP options.
+![Scenario dropdown open](images/sidebar-scenario-dropdown.png)
 
 Choose the Shared Socioeconomic Pathway that drives the sea level projection:
 
@@ -54,7 +73,7 @@ Changing the scenario immediately updates the SLR value and redraws the flood ov
 
 ### Projection Year
 
-> 📸 **Screenshot needed:** Year slider at 2100 with the year label below it.
+![Year slider at 2100](images/sidebar-year-slider.png)
 
 Drag the slider from **2030** to **2150** in 10-year steps. Earlier years show less flooding
 under most scenarios; later years compound the effect.
@@ -63,7 +82,7 @@ under most scenarios; later years compound the effect.
 
 ### Confidence (Percentile)
 
-> 📸 **Screenshot needed:** The three percentile buttons with "Median (50th)" highlighted in blue.
+![Percentile buttons, Median selected](images/sidebar-percentile.png)
 
 | Button | Meaning |
 |--------|---------|
@@ -78,8 +97,7 @@ median models.
 
 ### Effective SLR Box
 
-> 📸 **Screenshot needed:** The blue "Effective SLR" box showing e.g. "Effective SLR: 0.56m",
-> "IPCC projection: 0.52m", "VLM correction: +0.043m", "Source: Regional + GPS VLM".
+![Effective SLR breakdown](images/sidebar-effective-slr-detail.png)
 
 This box appears once the backend resolves the sea level rise for the current map center. It shows:
 
@@ -93,9 +111,7 @@ This box appears once the backend resolves the sea level rise for the current ma
 
 ### Connectivity
 
-> 📸 **Screenshot needed:** Connectivity buttons with "Boundary" selected. Then a side-by-side
-> (or two separate screenshots) showing the same location with "None" vs "Boundary" to show
-> the difference (isolated inland pixels disappear in Boundary mode).
+![Connectivity modes: None vs Boundary](images/connectivity-compare.png)
 
 Controls which below-threshold DEM pixels are colored as flooded:
 
@@ -124,8 +140,7 @@ Controls which below-threshold DEM pixels are colored as flooded:
 
 ### Region Stats
 
-> 📸 **Screenshot needed:** The Stats panel at the bottom of the sidebar showing Tiles Used,
-> Flood Ratio, Flooded Pixels, Elevation Range, and the yellow "Est. Population Affected" box.
+![Region stats panel](images/sidebar-stats.png)
 
 After the backend analyzes the current viewport, the sidebar shows:
 
@@ -169,8 +184,7 @@ area are fast.
 
 ### City Markers
 
-> 📸 **Screenshot needed:** Map showing red markers for at least Miami and New Orleans; one
-> popup open showing the city name and a short description.
+![City markers with Miami popup](images/map-city-markers.png)
 
 Red pin markers are placed at the five story locations. Click any marker to open a popup
 with a short description of the city's flood risk context.

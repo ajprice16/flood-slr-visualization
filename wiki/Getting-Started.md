@@ -116,7 +116,7 @@ This builds and starts four services:
 
 Open **http://localhost** in your browser.
 
-> 📸 **Screenshot needed:** Browser showing the landing page disclaimer at http://localhost.
+![Landing page disclaimer](images/landing-disclaimer.png)
 
 ---
 
@@ -124,8 +124,7 @@ Open **http://localhost** in your browser.
 
 The landing page requires you to check the disclaimer box before proceeding to the map.
 
-> 📸 **Screenshot needed:** Landing page with the checkbox ticked and the "Proceed to
-> Interactive Map" button lit up (purple gradient).
+![Disclaimer accepted, Proceed button enabled](images/landing-checked.png)
 
 ---
 
@@ -133,8 +132,10 @@ The landing page requires you to check the disclaimer box before proceeding to t
 
 ```bash
 curl http://localhost/api/health
-# {"status":"ok","tiles_indexed":842}
+# {"status":"ok","tiles_indexed":6293}
 ```
+
+(`tiles_indexed` will reflect however many DEM files you placed in `Backend/dem/`.)
 
 If `tiles_indexed` is 0, re-check that your DEM files are in `Backend/dem/` and match the
 naming format above.
