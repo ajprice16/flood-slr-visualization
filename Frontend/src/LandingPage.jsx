@@ -247,7 +247,7 @@ export default function LandingPage({ onProceed }) {
 
                             {/* Data Sources */}
                             <a
-                                href="https://www.ipcc.ch/"
+                                href="https://doi.org/10.5281/zenodo.6382554"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{
@@ -279,19 +279,19 @@ export default function LandingPage({ onProceed }) {
                                     color: "#ff9800",
                                     marginBottom: "4px"
                                 }}>
-                                    IPCC Data
+                                    IPCC AR6 SLR Dataset
                                 </div>
                                 <div style={{
                                     fontSize: "0.85em",
                                     color: "#666"
                                 }}>
-                                    IPCC Climate Projections
+                                    Garner et al., 2022 (Zenodo)
                                 </div>
                             </a>
 
                             {/* NOAA Resources */}
                             <a
-                                href="https://www.noaa.gov/"
+                                href="https://coast.noaa.gov/slr/"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{
@@ -323,13 +323,13 @@ export default function LandingPage({ onProceed }) {
                                     color: "#2196f3",
                                     marginBottom: "4px"
                                 }}>
-                                    NOAA Resources
+                                    NOAA SLR Viewer
                                 </div>
                                 <div style={{
                                     fontSize: "0.85em",
                                     color: "#666"
                                 }}>
-                                    Official flood/SLR data
+                                    coast.noaa.gov/slr/
                                 </div>
                             </a>
                         </div>
