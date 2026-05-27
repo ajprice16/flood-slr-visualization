@@ -10,39 +10,19 @@ GitHub: https://github.com/ajprice16/flood-slr-visualization
 
 ---
 
-## GitHub Wiki Progress
+## Documentation
 
-Wiki pages live in `wiki/` in this repo. To publish them, push each file to the wiki repository:
+- **Project README**: `README.md` at the repo root. Hero image lives at `docs/images/`.
+- **Wiki**: hosted exclusively on GitHub at
+  <https://github.com/ajprice16/flood-slr-visualization/wiki>, backed by the separate
+  `flood-slr-visualization.wiki.git` repository. There is **no** in-repo `wiki/` directory —
+  edit pages by cloning the wiki repo, committing, and pushing.
 
 ```bash
-git clone https://github.com/ajprice16/flood-slr-visualization.wiki.git wiki-repo
-cp wiki/*.md wiki-repo/
-cd wiki-repo && git add -A && git commit -m "Add wiki pages" && git push
+git clone https://github.com/ajprice16/flood-slr-visualization.wiki.git
+# edit pages, then:
+git add -A && git commit -m "..." && git push
 ```
-
-### Pages
-
-| Page | File | Status |
-|------|------|--------|
-| Home | `wiki/Home.md` | ✅ Done |
-| Getting Started | `wiki/Getting-Started.md` | ✅ Done |
-| User Guide | `wiki/User-Guide.md` | ✅ Done |
-| Architecture | `wiki/Architecture.md` | ✅ Done |
-| API Reference | `wiki/API-Reference.md` | ✅ Done |
-| Story Mode | `wiki/Story-Mode.md` | ✅ Done |
-| Deployment | `wiki/Deployment.md` | ✅ Done |
-| Configuration | `wiki/Configuration.md` | ✅ Done |
-| Data Sources | `wiki/Data-Sources.md` | ✅ Done |
-| Troubleshooting | `wiki/Troubleshooting.md` | ✅ Done |
-| Development | `wiki/Development.md` | ✅ Done |
-
-### Screenshot Placeholders
-
-Each page marks spots needing real screenshots with a blockquote:
-`> 📸 **Screenshot needed:** [description]`
-
-To capture them, run the app (`docker compose up -d` or `npm run dev` + uvicorn) and take
-screenshots at the annotated UI states.
 
 ---
 

@@ -5,7 +5,7 @@
 🌐 **Live demo:** <https://oursealevel.org> · <https://sea-level-rise.org>
 📚 **Full documentation:** [Project Wiki](https://github.com/ajprice16/flood-slr-visualization/wiki)
 
-![Interactive map with Miami flood overlay](wiki/images/home-hero.png)
+![Interactive map with Miami flood overlay](docs/images/home-hero.png)
 
 ---
 
