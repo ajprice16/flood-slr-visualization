@@ -254,7 +254,7 @@ export default function App() {
 
                 {/* Percentile Toggle */}
                 <div style={{ marginBottom: "12px" }}>
-                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Confidence</label>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Model Run Skew</label>
                     <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
                         {[
                             { value: 5, label: "Low (5th)" },
