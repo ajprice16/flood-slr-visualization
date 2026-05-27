@@ -3,7 +3,7 @@ import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
 import { escapeHtml } from "./utils";
 
-export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", vlmEnabled = true, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
+export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
     const debounceRef = useRef(null);
@@ -243,14 +243,8 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
         const applyRaster = () => {
             const origin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:5173';
             const apiBase = origin.includes(':5173') ? origin.replace(':5173', ':8000') : '/api';
-            // v=4: cache-bust for connectivity-mode and water-mask routing.
-            // cb: effective SLR (incl. VLM) so the browser refetches when VLM
-            // changes — the backend folds VLM into each tile but the URL is
-            // otherwise identical, so without this the HTTP cache serves stale
-            // overlays. Named "cb" (not "slr") because ?slr= would override
-            // per-tile VLM resolution on the backend.
-            const cb = resolvedSlr != null ? resolvedSlr.toFixed(2) : "0";
-            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&connectivity=${connectivityMode}&water_mask=${waterMaskMode}&vlm=${vlmEnabled}&v=4&cb=${cb}`;
+            // v=4: cache-bust for connectivity-mode and water-mask routing
+            const tileUrl = `${apiBase}/tiles/{z}/{x}/{y}?scenario=${scenario}&year=${year}&pct=${percentile}&connectivity=${connectivityMode}&water_mask=${waterMaskMode}&v=4`;
 
             const hasSlr = resolvedSlr != null && resolvedSlr > 0;
             const desiredOpacity = hasSlr ? 0.7 : 0.0;
@@ -285,7 +279,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             };
             map.on('load', onLoad);
         }
-    }, [scenario, year, percentile, connectivityMode, waterMaskMode, vlmEnabled, resolvedSlr]);
+    }, [scenario, year, percentile, connectivityMode, waterMaskMode, resolvedSlr]);
 
     return (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -323,7 +317,6 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                 <div>© IPCC Projections: <a href="https://doi.org/10.5281/zenodo.6382554" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>IPCC AR6 WG1</a> (Garner et al., 2022)</div>
                 <div>© Population: <a href="https://www.worldpop.org" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>WorldPop</a></div>
                 <div>© Mapping: <a href="https://maplibre.org" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>MapLibre GL JS</a></div>
-                <div>© VLM: <a href="https://geodesy.unr.edu/velocities/midas.IGS14.txt" target="_blank" rel="noopener noreferrer" style={{color:"#6cf"}}>MIDAS</a> (UNR) </div>
             </div>
         </div>
     );

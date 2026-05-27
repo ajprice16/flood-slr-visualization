@@ -24,7 +24,7 @@ vi.mock('../api', () => ({
         durationMs: 50,
     }),
     fetchResolvedSlr: vi.fn().mockResolvedValue({
-        data: { slr_meters: 0.56, ipcc_slr_meters: 0.56, vlm_offset_meters: 0.0, projection_source: 'global_mean', vlm_source: 'none' },
+        data: { slr_meters: 0.56, projection_source: 'global_mean' },
         status: 200,
         ok: true,
         durationMs: 20,

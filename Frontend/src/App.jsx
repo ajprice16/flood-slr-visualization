@@ -20,7 +20,6 @@ export default function App() {
     const [percentile, setPercentile] = useState(50);
     const [connectivityMode, setConnectivityMode] = useState("boundary");
     const [waterMaskMode, setWaterMaskMode] = useState("none");
-    const [vlmEnabled, setVlmEnabled] = useState(true);
     const [resolvedSlr, setResolvedSlr] = useState(null);
     const [floodData, setFloodData] = useState(null);
     const [pending, setPending] = useState(false);
@@ -104,13 +103,13 @@ export default function App() {
         const centerLat = (bbox.lat_min + bbox.lat_max) / 2;
         const centerLon = (bbox.lon_min + bbox.lon_max) / 2;
         let cancelled = false;
-        fetchResolvedSlr(centerLat, centerLon, scenario, year, percentile, vlmEnabled)
+        fetchResolvedSlr(centerLat, centerLon, scenario, year, percentile)
             .then(result => {
                 if (!cancelled) setResolvedSlr(result.data);
             })
             .catch(() => {}); // non-critical, silent fail
         return () => { cancelled = true; };
-    }, [bbox?.lon_min, bbox?.lat_min, scenario, year, percentile, vlmEnabled]);
+    }, [bbox?.lon_min, bbox?.lat_min, scenario, year, percentile]);
 
     // Debounced analysis on bbox or scenario change
     useEffect(() => {
@@ -125,7 +124,7 @@ export default function App() {
         const handle = setTimeout(async () => {
             const start = performance.now();
             try {
-                const result = await analyzeRegion(bbox, { scenario, year, percentile, vlmEnabled }, { signal: controller.signal });
+                const result = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
                 setFloodData(result.data);
                 setLastRequest({ status: result.status, ok: result.ok, durationMs: result.durationMs });
             } catch (e) {
@@ -141,7 +140,7 @@ export default function App() {
             controller.abort();
             clearTimeout(handle);
         };
-    }, [bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, scenario, year, percentile, vlmEnabled, forceRefresh]);
+    }, [bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, scenario, year, percentile, forceRefresh]);
 
     const cancelAndRestart = async () => {
         try {
@@ -326,18 +325,6 @@ export default function App() {
                     </select>
                 </div>
 
-                {/* VLM toggle */}
-                <div style={{ marginBottom: "12px" }}>
-                    <label style={{ fontWeight: "600", fontSize: "0.85em", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                        <input
-                            type="checkbox"
-                            checked={vlmEnabled}
-                            onChange={e => setVlmEnabled(e.target.checked)}
-                        />
-                        Vertical land motion (VLM)
-                    </label>
-                </div>
-
                 {/* Resolved SLR Display */}
                 {resolvedSlr && (
                     <div style={{
@@ -348,13 +335,10 @@ export default function App() {
                         fontSize: "0.85em"
                     }}>
                         <div style={{ fontWeight: "600", marginBottom: "4px" }}>
-                            Effective SLR: {resolvedSlr.slr_meters?.toFixed(2)}m
+                            Sea level rise: {resolvedSlr.slr_meters?.toFixed(2)}m
                         </div>
-                        <div>IPCC projection: {resolvedSlr.ipcc_slr_meters?.toFixed(2)}m</div>
-                        <div>VLM correction: {resolvedSlr.vlm_offset_meters > 0 ? "+" : ""}{resolvedSlr.vlm_offset_meters?.toFixed(3)}m</div>
                         <div style={{ fontSize: "0.9em", color: "#666", marginTop: "2px" }}>
-                            Source: {resolvedSlr.projection_source === "regional" ? "Regional" : "Global mean"}
-                            {resolvedSlr.vlm_source !== "none" && ` + ${resolvedSlr.vlm_source === "gps_midas" ? "GPS" : "GIA"} VLM`}
+                            Source: IPCC AR6 {resolvedSlr.projection_source === "regional" ? "regional" : "global mean"}
                         </div>
                     </div>
                 )}
@@ -429,7 +413,6 @@ export default function App() {
                     resolvedSlr={effectiveSlr}
                     connectivityMode={connectivityMode}
                     waterMaskMode={waterMaskMode}
-                    vlmEnabled={vlmEnabled}
                     onBoundsChange={handleBoundsChange}
                     pending={pending}
                     lastRequest={lastRequest}

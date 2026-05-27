@@ -35,13 +35,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 import projection
-import vlm
 import water_mask
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build tile index, load population data, projections, and VLM on startup."""
+    """Build tile index, load population data, and projections on startup."""
     build_tile_index()
     load_population_data()
     global WATER_MASK_PROVIDER
@@ -50,11 +49,6 @@ async def lifespan(app: FastAPI):
     # IPCC AR6 projections (optional — falls back to embedded global mean)
     proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
     projection.load_projections(proj_path)
-
-    # Vertical land motion corrections (optional — falls back to 0)
-    gia_path = os.path.join(BASE_DIR, "data", "ice6g_vlm.json")
-    gps_path = os.path.join(BASE_DIR, "data", "midas_vlm.json")
-    vlm.load_vlm(gia_path=gia_path, gps_path=gps_path)
 
     yield
 
@@ -735,13 +729,12 @@ def get_tile(z: int, x: int, y: int,
              year: Optional[int] = None,
              pct: int = 50,
              connectivity: str = "boundary",
-             water_mask: str = "none",
-             vlm_enabled: bool = Query(True, alias="vlm")):
+             water_mask: str = "none"):
     """Return a PNG flood overlay tile for z/x/y.
 
     Two modes:
       - Legacy: ?slr=1.0 (direct SLR value)
-      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved per-tile from IPCC + VLM)
+      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved per-tile from IPCC AR6)
     """
     # Validate tile coordinates
     if z < 0 or z > MAX_ZOOM_LEVEL:
@@ -763,9 +756,7 @@ def get_tile(z: int, x: int, y: int,
     elif scenario and year:
         center_lat = (b.south + b.north) / 2
         center_lon = (b.west + b.east) / 2
-        base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
-        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year) if vlm_enabled else 0.0
-        slr_meters = (base_slr or 0.0) + vlm_offset
+        slr_meters = projection.resolve_slr(center_lat, center_lon, scenario, year, pct) or 0.0
     else:
         slr_meters = 1.0  # default fallback
 
@@ -824,13 +815,12 @@ def analyze_region(
     year: Optional[int] = Query(None, ge=2020, le=2200),
     pct: int = Query(50, ge=1, le=99),
     sample_limit: int = Query(100, ge=1, le=10000),
-    vlm_enabled: bool = Query(True, alias="vlm"),
 ):
     """Analyze a geographic region for flood risk with SLR.
 
     Two modes:
       - Legacy: ?slr=1.0
-      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved from IPCC + VLM)
+      - Scenario: ?scenario=ssp245&year=2100&pct=50 (resolved from IPCC AR6)
     """
     # Resolve effective SLR for the region center
     center_lat = (lat_min + lat_max) / 2
@@ -839,9 +829,7 @@ def analyze_region(
     if slr is not None:
         effective_slr = slr
     elif scenario and year:
-        base_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct)
-        vlm_offset = vlm.resolve_vlm_offset(center_lat, center_lon, year) if vlm_enabled else 0.0
-        effective_slr = (base_slr or 0.0) + vlm_offset
+        effective_slr = projection.resolve_slr(center_lat, center_lon, scenario, year, pct) or 0.0
     else:
         effective_slr = 1.0
 
@@ -1128,26 +1116,19 @@ def analyze(city: str, slr: float, sample_limit: int = 500, include_points: bool
 
 @app.get("/resolve_slr")
 def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
-                         year: int, pct: int = 50,
-                         vlm_enabled: bool = Query(True, alias="vlm")):
+                         year: int, pct: int = 50):
     """Resolve effective SLR for a location under a given scenario.
 
-    Returns IPCC regional projection + VLM correction combined.
+    Returns the IPCC AR6 regional projection (relative sea level, which
+    already includes the vertical land motion / GIA background term).
     """
     base_slr = projection.resolve_slr(lat, lon, scenario, year, pct)
     if base_slr is None:
         raise HTTPException(status_code=400,
                             detail=f"Invalid scenario '{scenario}' or percentile {pct}")
 
-    vlm_offset = vlm.resolve_vlm_offset(lat, lon, year) if vlm_enabled else 0.0
-    vlm_info = vlm.get_vlm_info(lat, lon)
-
     return {
-        "slr_meters": round(base_slr + vlm_offset, 4),
-        "ipcc_slr_meters": round(base_slr, 4),
-        "vlm_offset_meters": round(vlm_offset, 4),
-        "vlm_rate_mm_yr": vlm_info["vlm_mm_yr"],
-        "vlm_source": vlm_info["source"] if vlm_enabled else "none",
+        "slr_meters": round(base_slr, 4),
         "projection_source": "regional" if projection.is_loaded() else "global_mean",
         "scenario": scenario,
         "year": year,
@@ -1164,6 +1145,5 @@ def projection_info(lat: Optional[float] = None, lon: Optional[float] = None):
 
     if lat is not None and lon is not None:
         info["projection_at"] = projection.get_projection_at(lat, lon)
-        info["vlm"] = vlm.get_vlm_info(lat, lon)
 
     return info

@@ -18,13 +18,11 @@ under water — along with an estimate of how many people live there today.
 It is built on published science:
 
 - **Sea level projections** come from the [IPCC AR6 WG1 Regional Sea-Level dataset](https://doi.org/10.5281/zenodo.6382554)
-  (Garner et al., 2022) — the same data used by the IPCC's *Sixth Assessment Report*.
+  (Garner et al., 2022) — the same data used by the IPCC's *Sixth Assessment Report*. These are
+  *relative* sea-level projections, so vertical land motion (GIA, subsidence, uplift) is already
+  built into the regional values.
 - **Land elevation** comes from **DiluviumDEM**, a coastal-optimized digital elevation model
   built specifically to correct the well-known overestimates of SRTM in low-lying coastal areas.
-- **Vertical land motion** (subsidence and uplift) is applied per location using **MIDAS GPS
-  velocities** and the **ICE-6G_C glacial isostatic adjustment model** — so a sinking delta
-  city like Tokyo Bay or Jakarta gets a different effective sea level than a rebounding
-  coastline in Scandinavia.
 - **Population exposure** is computed from **WorldPop 2020** ~1 km gridded population.
 
 Everything is rendered on the fly: every flood pixel you see is computed from the underlying
@@ -39,7 +37,7 @@ Welcome — this is the live tool behind the talk. Three places to start:
 1. **Try the demo** at <https://oursealevel.org>. Click *Start Story* (top right) for a
    guided tour through Miami, New Orleans, Tokyo, Tabasco (Mexico), and the Bengal delta.
 2. **Read the methodology** → [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources)
-   for full provenance, citations, and how IPCC + VLM are combined.
+   for full provenance and citations.
 3. **Cite or reuse** — the source code is in this repository; the underlying datasets keep
    their original licenses (see [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources)).
 
@@ -49,8 +47,8 @@ Welcome — this is the live tool behind the talk. Three places to start:
 
 | You see | What it means |
 |---------|----------------|
-| Blue translucent overlay | Land below the *effective* sea level for the chosen scenario/year/percentile, after VLM correction. |
-| The **Effective SLR** sidebar box | The exact water level used at the current map center, broken into IPCC base + VLM offset. |
+| Blue translucent overlay | Land below the projected sea level for the chosen scenario/year/percentile. |
+| The **Sea level rise** sidebar box | The exact water level used at the current map center for the chosen scenario/year/percentile. |
 | **Tiles / Flood Ratio / Elevation Range** | Diagnostics for the current viewport — how much of the visible land sits below the threshold. |
 | **Est. Population Affected** | Sum of WorldPop 2020 population in the inundated pixels visible on screen. |
 | Red pins | The five Story Mode locations. Click one to read its narrative. |
@@ -135,8 +133,6 @@ Full diagram and request flow: [Architecture](https://github.com/ajprice16/flood
 | Sea level projections | IPCC AR6 WG1 Regional SLR — Garner et al., 2022 ([Zenodo](https://doi.org/10.5281/zenodo.6382554)) | CC BY 4.0 |
 | Elevation (DEM) | DiluviumDEM (Dusseau et al.) | See project |
 | Population | [WorldPop](https://www.worldpop.org) 2020 | CC BY 4.0 |
-| GPS-observed VLM | [MIDAS](https://geodesy.unr.edu/) (Nevada Geodetic Laboratory, UNR) | Public domain |
-| GIA model | ICE-6G_C (Peltier et al.) | Academic use |
 | Satellite imagery | Esri World Imagery | Esri tile service terms |
 | Map rendering | [MapLibre GL JS](https://maplibre.org/) | BSD-3-Clause |
 

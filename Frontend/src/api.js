@@ -101,8 +101,8 @@ function extractErrorDetail(body) {
 
 export async function analyzeRegion(bbox, params, options = {}) {
     const { lon_min, lat_min, lon_max, lat_max } = bbox;
-    const { scenario, year, percentile, vlmEnabled = true } = params;
-    const url = `${API}/analyze_region?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&scenario=${scenario}&year=${year}&pct=${percentile}&vlm=${vlmEnabled}`;
+    const { scenario, year, percentile } = params;
+    const url = `${API}/analyze_region?lon_min=${lon_min}&lat_min=${lat_min}&lon_max=${lon_max}&lat_max=${lat_max}&scenario=${scenario}&year=${year}&pct=${percentile}`;
     const maxAttempts = 3;
     let attempt = 0;
     let lastError = null;
@@ -129,8 +129,8 @@ export async function analyzeRegion(bbox, params, options = {}) {
     throw lastError || new Error('Unknown fetch failure');
 }
 
-export async function fetchResolvedSlr(lat, lon, scenario, year, pct = 50, vlmEnabled = true) {
-    const url = `${API}/resolve_slr?lat=${lat}&lon=${lon}&scenario=${scenario}&year=${year}&pct=${pct}&vlm=${vlmEnabled}`;
+export async function fetchResolvedSlr(lat, lon, scenario, year, pct = 50) {
+    const url = `${API}/resolve_slr?lat=${lat}&lon=${lon}&scenario=${scenario}&year=${year}&pct=${pct}`;
     return await fetchWithMeta(url, { method: 'GET', timeoutMs: 5000 });
 }
 

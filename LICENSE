@@ -26,7 +26,7 @@ Note on data and basemaps:
 
 The MIT license above covers the source code in this repository. The datasets
 and basemap tile services that the application uses at runtime (DiluviumDEM,
-WorldPop 2020, IPCC AR6 Regional SLR, ICE-6G_C, MIDAS, Esri World Imagery,
+WorldPop 2020, IPCC AR6 Regional SLR, Esri World Imagery,
 MapLibre GL JS, etc.) retain their own licenses and terms of use. See the
 "Data Sources" page on the project wiki for full attribution and licensing
 details:

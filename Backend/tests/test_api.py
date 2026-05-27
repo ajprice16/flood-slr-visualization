@@ -404,7 +404,7 @@ class TestResolveSlrEndpoint:
         resp = c.get("/resolve_slr?lat=25.0&lon=-80.0&scenario=ssp245&year=2100&pct=50")
         assert resp.status_code == 200
         data = resp.json()
-        for key in ("slr_meters", "ipcc_slr_meters", "vlm_offset_meters",
+        for key in ("slr_meters", "projection_source",
                     "scenario", "year", "percentile"):
             assert key in data
 
@@ -449,7 +449,6 @@ class TestProjectionInfo:
         assert resp.status_code == 200
         data = resp.json()
         assert "projection_at" in data
-        assert "vlm" in data
 
 
 # ---------------------------------------------------------------------------

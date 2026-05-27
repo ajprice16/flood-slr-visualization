@@ -125,8 +125,8 @@ export default function StoryMap({ stories, currentIndex, onNavigate, onClose, s
                 </div>
                 {resolvedSlr && (
                     <div style={{ fontSize: "12px", color: "#555" }}>
-                        <div>Effective SLR: {resolvedSlr.slr_meters?.toFixed(2)}m ({percentile}th percentile)</div>
-                        <div>IPCC: {resolvedSlr.ipcc_slr_meters?.toFixed(2)}m | VLM: {resolvedSlr.vlm_offset_meters > 0 ? "+" : ""}{resolvedSlr.vlm_offset_meters?.toFixed(3)}m</div>
+                        <div>Sea level rise: {resolvedSlr.slr_meters?.toFixed(2)}m ({percentile}th percentile)</div>
+                        <div>Source: IPCC AR6</div>
                     </div>
                 )}
             </div>

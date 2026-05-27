@@ -170,10 +170,10 @@ describe('StoryMap', () => {
                 scenario="ssp245"
                 year={2100}
                 percentile={50}
-                resolvedSlr={{ slr_meters: 0.56, ipcc_slr_meters: 0.56, vlm_offset_meters: 0.0 }}
+                resolvedSlr={{ slr_meters: 0.56 }}
             />
         );
-        expect(screen.getByText(/Effective SLR/i)).toBeTruthy();
+        expect(screen.getByText(/Sea level rise/i)).toBeTruthy();
     });
 
     it('returns null when stories array is empty', () => {

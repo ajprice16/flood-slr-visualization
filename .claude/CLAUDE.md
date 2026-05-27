@@ -32,8 +32,7 @@ git add -A && git commit -m "..." && git push
 - Frontend: `Frontend/src/App.jsx` (controls) + `MapView.jsx` (map) + `StoryMap.jsx` (story panel) + `LandingPage.jsx` (disclaimer gate)
 - DEM tiles: `Backend/dem/` — DiluviumDEM GeoTIFFs, named `DiluviumDEM_N34_00_E118_00.tif`
 - Population: `Backend/wp_2020/` — WorldPop 2020 ~1 km rasters
-- Projections: `Backend/data/ipcc_ar6_slr.json` (optional, falls back to embedded global mean)
-- VLM: `Backend/data/ice6g_vlm.json` + `midas_vlm.json` (optional, falls back to 0)
+- Projections: `Backend/data/ipcc_ar6_slr.json` (optional, falls back to embedded global mean). This is the AR6 `regional-confidence` *total* product — relative sea level, so vertical land motion (GIA + background VLM) is already baked in; do not add a separate VLM correction.
 
 ## Deployment Modes
 

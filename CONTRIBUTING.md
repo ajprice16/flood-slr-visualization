@@ -102,7 +102,7 @@ Verify the backend is up with `curl http://localhost:8000/api/health`.
 ### Tests
 
 - New backend behaviour should ship with a `pytest` test if it touches request handling,
-  projection resolution, VLM lookup, or tile rendering.
+  projection resolution, or tile rendering.
 - New frontend behaviour: at minimum a smoke test in `Frontend/src/__tests__/`. Visual UI
   changes do not strictly require tests but please describe how you manually verified.
 - Don't lower or skip existing tests to make yours pass. If a test seems wrong, raise it in
@@ -189,9 +189,8 @@ Useful things to include:
 - A citation (DOI, link, or full reference).
 - A short statement of how the methodology should change, if applicable.
 
-Methodology changes that affect the visible projection — changing the SLR resolution, swapping
-the DEM, altering the VLM combination logic — go through extra review and may require
-maintainer agreement before being implemented.
+Methodology changes that affect the visible projection — changing the SLR resolution or swapping
+the DEM — go through extra review and may require maintainer agreement before being implemented.
 
 ---
 
