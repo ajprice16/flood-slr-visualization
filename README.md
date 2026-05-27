@@ -146,9 +146,18 @@ Full citations and methodology notes: [Data Sources](https://github.com/ajprice1
 
 ## License
 
-The dataset and basemap providers retain their own licenses (listed above). The source code
-in this repository is currently unlicensed — treat it as proprietary unless a license file is
-added. If you would like to use, fork, or extend the code, please open an issue.
+The source code in this repository is released under the [MIT License](LICENSE). The
+datasets and basemap providers retain their own licenses (listed above and in detail on the
+[Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources) wiki
+page).
+
+---
+
+## Contributing
+
+Contributions are welcome — code, documentation, new story-mode cities, or scientific
+feedback on methodology. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
+guidelines.
 
 ---
 
