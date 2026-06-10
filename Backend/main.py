@@ -1100,10 +1100,13 @@ def analyze(city: str, slr: float, sample_limit: int = 500, include_points: bool
         include_points: Whether to include flooded_pixels array (default True).
     """
     dem_file = None
+    base_dir = os.path.realpath(DATA_DIR)
     for ext in (".tif", ".tiff"):
-        path = os.path.join(DATA_DIR, f"{city}{ext}")
-        if os.path.exists(path):
-            dem_file = path
+        candidate = os.path.realpath(os.path.join(base_dir, f"{city}{ext}"))
+        if os.path.commonpath([base_dir, candidate]) != base_dir:
+            continue
+        if os.path.exists(candidate):
+            dem_file = candidate
             break
     if not dem_file:
         raise HTTPException(status_code=404, detail=f"City '{city}' not found")
