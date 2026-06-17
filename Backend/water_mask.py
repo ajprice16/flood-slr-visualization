@@ -18,19 +18,21 @@ Bounds = Tuple[float, float, float, float]
 
 
 class WaterMaskProvider(ABC):
-    """Abstract water-mask provider."""
+    # Abstract water-mask provider.
 
     @abstractmethod
     def load(self) -> None:
-        """Load any backing resources."""
+        # Load any backing resources.
+        pass
 
     @abstractmethod
     def mask_for_bounds(self, bounds: Bounds, shape: Tuple[int, int], dst_transform, dst_crs) -> Optional[np.ndarray]:
-        """Return a boolean mask aligned to the destination grid, or None."""
+        # Return a boolean mask aligned to the destination g...
+        pass
 
 
 class NoWaterMaskProvider(WaterMaskProvider):
-    """Fallback provider used when no water-mask data is configured."""
+    # Fallback provider used when no water-mask dataset ...
 
     def load(self) -> None:
         return None
@@ -82,7 +84,7 @@ class RasterWaterMaskProvider(WaterMaskProvider):
 
 
 def load_provider() -> WaterMaskProvider:
-    """Create and load the configured water-mask provider."""
+    # Create and load the configured water-mask provider...
     raster_path = os.environ.get("WATER_MASK_RASTER", "").strip()
     if not raster_path:
         provider = NoWaterMaskProvider()

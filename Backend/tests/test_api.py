@@ -25,7 +25,7 @@ if BACKEND_DIR not in sys.path:
 def _make_dem_bytes(elevation=0.5, height=10, width=10,
                     west=139.0, south=35.0, east=140.0, north=36.0,
                     array=None):
-    """Create an in-memory GeoTIFF for a 1°×1° region."""
+    # Create an in-memory GeoTIFF for a 1°×1° region....
     import rasterio
     from rasterio.transform import from_bounds
 
@@ -61,7 +61,8 @@ def client():
 
     # Patch at import time before the module is imported
     with patch("main.build_tile_index", return_value={}), \
-         patch("main.load_population_data", return_value=False):
+            patch("main.load_population_data", return_value=False), \
+            patch.dict(os.environ, {"DEBUG_MODE": "true"}):
         import main as app_module
         # Swap lifespan so TestClient doesn't call the real startup
         app_module.app.router.lifespan_context = _noop_lifespan
@@ -79,9 +80,9 @@ class TestHealth:
         c, _ = client
         resp = c.get("/health")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "ok"
-        assert "tiles_indexed" in data
+        dataset = resp.json()
+        assert dataset["status"] == "ok"
+        assert "tiles_indexed" in dataset
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +179,7 @@ class TestGetTileWithDem:
         for lat_cell in range(35, 36):
             for lon_cell in range(139, 140):
                 app_module.TILE_GRID[(lat_cell, lon_cell)].append(tile_name)
-        # Clear the LRU cache so it doesn't reuse a previous empty result
+        # Clear the LRU cache so it doesn't reuse a previous empty output
         app_module.render_tile_png_multi_cached.cache_clear()
 
         # Tile 14/13743/6405 covers Tokyo area; use a zoom/tile that overlaps the DEM
@@ -192,7 +193,7 @@ class TestGetTileWithDem:
         assert "image/png" in resp.headers["content-type"]
 
     def test_inland_basin_does_not_paint_tile(self, client, tmp_path):
-        """An isolated inland basin below sea level should stay transparent."""
+        # An isolated inland basin below sea level should st...
         c, app_module = client
         import mercantile
 
@@ -264,7 +265,7 @@ class TestAnalyzeRegion:
         assert resp.status_code == 404
 
     def test_zero_slr_returns_zero_flood(self, client, tmp_path):
-        """slr ≤ 0 must short-circuit and return flooded_count=0."""
+        # slr ≤ 0 must short-circuit and return flooded_coun...
         c, app_module = client
         dem_bytes = _make_dem_bytes(elevation=0.5)
         dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
@@ -283,9 +284,9 @@ class TestAnalyzeRegion:
 
         resp = c.get("/analyze_region?lon_min=139&lat_min=35&lon_max=140&lat_max=36&slr=0")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["flooded_count"] == 0
-        assert data["flood_ratio"] == 0.0
+        dataset = resp.json()
+        assert dataset["flooded_count"] == 0
+        assert dataset["flood_ratio"] == 0.0
 
     def test_response_schema(self, client, tmp_path):
         c, app_module = client
@@ -306,11 +307,11 @@ class TestAnalyzeRegion:
 
         resp = c.get("/analyze_region?lon_min=139&lat_min=35&lon_max=140&lat_max=36&slr=2.0")
         assert resp.status_code == 200
-        data = resp.json()
+        dataset = resp.json()
         required_keys = {"bbox", "slr", "tiles_used", "flooded_count",
                          "total_valid", "flood_ratio", "flooded_pixels",
                          "elevation_min", "elevation_max"}
-        assert required_keys.issubset(data.keys())
+        assert required_keys.issubset(dataset.keys())
 
     def test_inland_basin_not_counted_as_flooded(self, client, tmp_path):
         c, app_module = client
@@ -342,12 +343,12 @@ class TestAnalyzeRegion:
             f"&lon_max={bounds.east}&lat_max={bounds.north}&slr=2.0"
         )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["flooded_count"] == 0
-        assert data["flood_ratio"] == 0.0
+        dataset = resp.json()
+        assert dataset["flooded_count"] == 0
+        assert dataset["flood_ratio"] == 0.0
 
     def test_all_flooded_when_slr_above_elevation(self, client, tmp_path):
-        """All pixels are at 0.5 m; slr=2.0 should flood everything."""
+        # All pixels are at 0.5 m; slr=2.0 should flood ever...
         c, app_module = client
         dem_bytes = _make_dem_bytes(elevation=0.5)
         dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
@@ -366,11 +367,11 @@ class TestAnalyzeRegion:
 
         resp = c.get("/analyze_region?lon_min=139&lat_min=35&lon_max=140&lat_max=36&slr=2.0")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["flood_ratio"] == pytest.approx(1.0)
+        dataset = resp.json()
+        assert dataset["flood_ratio"] == pytest.approx(1.0)
 
     def test_none_flooded_when_slr_below_elevation(self, client, tmp_path):
-        """All pixels are at 5.0 m; slr=1.0 should flood nothing."""
+        # All pixels are at 5.0 m; slr=1.0 should flood noth...
         c, app_module = client
         dem_bytes = _make_dem_bytes(elevation=5.0)
         dem_path = tmp_path / "DiluviumDEM_N35_00_E139_00.tif"
@@ -389,9 +390,9 @@ class TestAnalyzeRegion:
 
         resp = c.get("/analyze_region?lon_min=139&lat_min=35&lon_max=140&lat_max=36&slr=1.0")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["flooded_count"] == 0
-        assert data["flood_ratio"] == 0.0
+        dataset = resp.json()
+        assert dataset["flooded_count"] == 0
+        assert dataset["flood_ratio"] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -403,10 +404,10 @@ class TestResolveSlrEndpoint:
         c, _ = client
         resp = c.get("/resolve_slr?lat=25.0&lon=-80.0&scenario=ssp245&year=2100&pct=50")
         assert resp.status_code == 200
-        data = resp.json()
+        dataset = resp.json()
         for key in ("slr_meters", "projection_source",
                     "scenario", "year", "percentile"):
-            assert key in data
+            assert key in dataset
 
     def test_slr_meters_positive(self, client):
         c, _ = client
@@ -439,16 +440,16 @@ class TestProjectionInfo:
         c, _ = client
         resp = c.get("/projection_info")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "scenarios" in data
-        assert "years" in data
+        dataset = resp.json()
+        assert "scenarios" in dataset
+        assert "years" in dataset
 
     def test_with_location(self, client):
         c, _ = client
         resp = c.get("/projection_info?lat=35.0&lon=139.0")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "projection_at" in data
+        dataset = resp.json()
+        assert "projection_at" in dataset
 
 
 # ---------------------------------------------------------------------------
@@ -474,9 +475,9 @@ class TestAnalyzeLegacy:
         try:
             resp = c.get(f"/analyze?city={city_name}&slr=2.0")
             assert resp.status_code == 200
-            data = resp.json()
-            assert data["city"] == city_name
-            assert data["flood_ratio"] == pytest.approx(1.0)
+            dataset = resp.json()
+            assert dataset["city"] == city_name
+            assert dataset["flood_ratio"] == pytest.approx(1.0)
         finally:
             app_module.DATA_DIR = original_data_dir
 
@@ -520,6 +521,6 @@ class TestDebugTilesInBbox:
         app_module.TILE_GRID[(0, 0)].append("T1")
         resp = c.get("/debug/tiles_in_bbox?lon_min=0.1&lat_min=0.1&lon_max=0.9&lat_max=0.9")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["count"] == 1
-        assert "T1" in data["tiles"]
+        dataset = resp.json()
+        assert dataset["count"] == 1
+        assert "T1" in dataset["tiles"]

@@ -40,14 +40,14 @@ import water_mask
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Build tile index, load population data, and projections on startup."""
+    # Build tile index, load population dataset, and pro...
     build_tile_index()
     load_population_data()
     global WATER_MASK_PROVIDER
     WATER_MASK_PROVIDER = water_mask.load_provider()
 
     # IPCC AR6 projections (optional — falls back to embedded global mean)
-    proj_path = os.path.join(BASE_DIR, "data", "ipcc_ar6_slr.json")
+    proj_path = os.path.join(BASE_DIR, "dataset", "ipcc_ar6_slr.json")
     projection.load_projections(proj_path)
 
     yield
@@ -98,7 +98,7 @@ WORLDPOP_BUCKET = os.environ.get("WORLDPOP_BUCKET", DEM_BUCKET)
 
 
 def _configure_gdal_spaces() -> None:
-    """Set GDAL/AWS env vars for DigitalOcean Spaces access."""
+    # Set GDAL/AWS env vars for DigitalOcean Spaces acce...
     endpoint = os.environ.get("SPACES_ENDPOINT_URL", "https://nyc3.digitaloceanspaces.com")
     host = endpoint.replace("https://", "").replace("http://", "")
     os.environ.setdefault("AWS_ACCESS_KEY_ID", os.environ.get("SPACES_ACCESS_KEY", ""))
@@ -112,7 +112,7 @@ def _configure_gdal_spaces() -> None:
 
 
 def _list_bucket_tifs(bucket: str, prefix: str = "") -> List[Tuple[str, str]]:
-    """List .tif objects in a Spaces bucket. Returns (object_key, basename) pairs."""
+    # List .tif objects in a Spaces bucket. Returns (obj...
     try:
         import boto3
         s3 = boto3.client(
@@ -147,7 +147,7 @@ _REDIS_RETRY_INTERVAL = 30.0  # seconds between reconnection attempts
 
 
 def _get_redis() -> Optional[Any]:
-    """Return a connected Redis client, or None if not configured/available."""
+    # Return a connected Redis client, or None if not co...
     global _redis_client, _redis_last_attempt
     if _redis_client is not None:
         return _redis_client
@@ -188,7 +188,7 @@ _SKIP_SESSION_PATHS = {"/health", "/stats", "/cities"}
 
 
 def _record_session(ip: str, path: str) -> None:
-    """Record an active session. Uses Redis if available, otherwise appends to shared file."""
+    # Record an active session. Uses Redis if available,...
     if not ip or any(path.startswith(p) for p in _SKIP_SESSION_PATHS):
         return
     r = _get_redis()
@@ -196,7 +196,7 @@ def _record_session(ip: str, path: str) -> None:
         try:
             r.setex(f"session:{ip}", _ACTIVE_WINDOW, "1")
             return
-        except Exception:
+        except (ValueError, KeyError, TypeError):
             pass
     # Fallback: file-based tracking
     now = _time.time()
@@ -207,17 +207,17 @@ def _record_session(ip: str, path: str) -> None:
     try:
         with open(_SESSION_FILE, "a") as f:
             f.write(f"{ip} {now:.0f}\n")
-    except Exception:
+    except (ValueError, KeyError, TypeError):
         pass
 
 
 def _read_active_sessions() -> int:
-    """Count unique IPs active in the last _ACTIVE_WINDOW seconds."""
+    # Count unique IPs active in the last _ACTIVE_WINDOW...
     r = _get_redis()
     if r is not None:
         try:
             return sum(1 for _ in r.scan_iter("session:*", count=1000))
-        except Exception:
+        except (ValueError, KeyError, TypeError):
             pass
     # Fallback: file-based
     cutoff = _time.time() - _ACTIVE_WINDOW
@@ -242,7 +242,7 @@ def _read_active_sessions() -> int:
 
 
 def _compact_sessions() -> None:
-    """Truncate expired entries from the sessions file."""
+    # Truncate expired entries from the sessions file....
     cutoff = _time.time() - _ACTIVE_WINDOW
     try:
         with open(_SESSION_FILE, "r") as f:
@@ -253,7 +253,7 @@ def _compact_sessions() -> None:
         ]
         with open(_SESSION_FILE, "w") as f:
             f.writelines(fresh)
-    except Exception:
+    except (ValueError, KeyError, TypeError):
         pass
 
 
@@ -266,7 +266,7 @@ def _safe_float(s: str) -> float:
 # In-memory caches
 ANALYSIS_CACHE_SIZE = 256
 try:
-    TILE_CACHE_SIZE = int(os.environ.get("TILE_CACHE_SIZE", 512))  # configurable via env var
+    TILE_CACHE_SIZE = int(os.environ.get("TILE_CACHE_SIZE", 512))  # configurable via env variable
 except (ValueError, TypeError):
     TILE_CACHE_SIZE = 512
 TILE_CACHE_SIZE = max(1, TILE_CACHE_SIZE)
@@ -332,7 +332,7 @@ def parse_dem_filename(filename: str) -> Dict:
 def build_tile_index():
     """Build spatial index of all DEM tiles.
 
-    Sources from DO Spaces if DEM_BUCKET env var is set (objects under dem/ prefix),
+    Sources from DO Spaces if DEM_BUCKET env variable is set (objects under dem/ prefix),
     otherwise scans DATA_DIR on the local filesystem.
     """
     global TILE_INDEX, TILE_GRID
@@ -374,7 +374,7 @@ def build_tile_index():
 
 
 def load_population_data():
-    """Load WorldPop population rasters. Supports single global file or multiple country tiles."""
+    # Load WorldPop population rasters. Supports single ...
     global POPULATION_DATASET, POPULATION_RASTERS
 
     POPULATION_RASTERS = []
@@ -458,7 +458,7 @@ async def timing_logger(request, call_next):
             )
             _record_session(client_ip, path)
             print(f"[API] {method} {path} {client_ip} took {duration_ms:.1f} ms")
-        except Exception:
+        except (ValueError, KeyError, TypeError):
             pass
 
 
@@ -499,7 +499,7 @@ def find_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max: 
 
 @app.get("/tiles/info")
 def get_tile_info():
-    """Get information about available DEM tiles."""
+    # Get information about available DEM tiles.
     return {
         "total_tiles": len(TILE_INDEX),
         "coverage": {
@@ -525,15 +525,15 @@ def debug_tiles_in_bbox(lon_min: float, lat_min: float, lon_max: float, lat_max:
 
 @app.get("/cities")
 def list_cities():
-    """Deprecated: city-based model removed. Returns empty list for compatibility."""
+    # Deprecated: city-based model removed. Returns empt...
     return {"cities": []}
 
 
-# Cached transparent tile (avoid regenerating for every empty/no-data tile)
+# Cached transparent tile (avoid regenerating for every empty/no-dataset tile)
 _TRANSPARENT_TILE_PNG = None
 
 def _get_transparent_tile(size: int = 256) -> bytes:
-    """Return a cached fully-transparent 256x256 PNG."""
+    # Return a cached fully-transparent 256x256 PNG....
     global _TRANSPARENT_TILE_PNG
     if _TRANSPARENT_TILE_PNG is None:
         rgba = np.zeros((size, size, 4), dtype=np.uint8)
@@ -544,7 +544,7 @@ def _get_transparent_tile(size: int = 256) -> bytes:
 
 
 def _keep_boundary_connected_flood(mask: np.ndarray) -> np.ndarray:
-    """Keep only flooded pixels connected to the tile boundary."""
+    # Keep only flooded pixels connected to the tile bou...
     if not np.any(mask):
         return np.zeros_like(mask, dtype=bool)
 
@@ -565,7 +565,7 @@ def _keep_boundary_connected_flood(mask: np.ndarray) -> np.ndarray:
 
 
 def _make_dst_transform(bounds, size: int) -> Affine:
-    """Build a north-up affine transform for a bounding box."""
+    # Build a north-up affine transform for a bounding b...
     left, bottom, right, top = bounds
     return Affine(
         (right - left) / size, 0.0, left,
@@ -576,7 +576,7 @@ def _make_dst_transform(bounds, size: int) -> Affine:
 
 @lru_cache(maxsize=TILE_CACHE_SIZE)
 def render_tile_png_multi_cached(tile_paths_tuple: Tuple[str, ...], slr_meters: float, z: int, x: int, y: int, size: int = 256, connectivity_mode: str = "boundary", water_mask_mode: str = "none") -> bytes:
-    """Cached wrapper for render_tile_png_multi. Uses tuple for hashability."""
+    # Cached wrapper for render_tile_png_multi. Uses tup...
     return render_tile_png_multi(
         list(tile_paths_tuple),
         slr_meters,
@@ -644,7 +644,7 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 for path in tile_paths:
                     try:
                         datasets.append(rasterio.open(path))
-                    except Exception:
+                    except (ValueError, KeyError, TypeError):
                         continue
                 if not datasets:
                     return _get_transparent_tile(size)
@@ -658,12 +658,12 @@ def render_tile_png_multi(tile_paths: List[str], slr_meters: float, z: int, x: i
                 for ds in datasets:
                     try:
                         ds.close()
-                    except Exception:
+                    except (ValueError, KeyError, TypeError):
                         pass
 
         # Reproject windowed source to EPSG:3857 output grid.
         # dst_arr initialised to NaN so any destination pixel not written by
-        # the warp (outside source coverage) is correctly treated as no-data.
+        # the warp (outside source coverage) is correctly treated as no-dataset.
         dst_transform = _make_dst_transform(render_bounds, render_size)
         dst_arr = np.full((render_size, render_size), np.nan, dtype=np.float32)
 
@@ -780,7 +780,7 @@ def get_tile(z: int, x: int, y: int,
                         "X-Cache": "HIT",
                     },
                 )
-        except Exception:
+        except (ValueError, KeyError, TypeError):
             pass
 
     try:
@@ -788,7 +788,7 @@ def get_tile(z: int, x: int, y: int,
         if _r is not None:
             try:
                 _r.setex(_rkey, 3600, png_bytes)
-            except Exception:
+            except (ValueError, KeyError, TypeError):
                 pass
         return Response(
             content=png_bytes,
@@ -836,7 +836,7 @@ def analyze_region(
     tile_names = find_tiles_in_bbox(lon_min, lat_min, lon_max, lat_max)
 
     if not tile_names:
-        raise HTTPException(status_code=404, detail="No DEM data available for this region")
+        raise HTTPException(status_code=404, detail="No DEM dataset available for this region")
 
     tile_paths = [TILE_INDEX[name]["path"] for name in tile_names]
 
@@ -932,7 +932,7 @@ def analyze_region(
                             try:
                                 pop_win = from_bounds(il, ib, ir, it, transform=r["transform"])
                                 pop_arr = r["ds"].read(1, window=pop_win)
-                            except Exception:
+                            except (ValueError, KeyError, TypeError):
                                 continue
                             populated = np.isfinite(pop_arr) & (pop_arr > 0)
                             prows, pcols = np.where(populated)
@@ -960,7 +960,7 @@ def analyze_region(
                             pop_vals = pop_arr[prows[valid_dem], pcols[valid_dem]]
                             population_affected += float(pop_vals[is_flood].sum())
 
-                    # Heuristic fallback when no WorldPop data (vectorized)
+                    # Heuristic fallback when no WorldPop dataset (vectorized)
                     if not has_pop_data and np.any(flooded):
                         flooded_vals = arr[flooded]
                         pixel_area_km2 = 0.0009
@@ -983,7 +983,7 @@ def analyze_region(
                                     "x": float(x),
                                     "y": float(y)
                                 })
-            except Exception:
+            except (ValueError, KeyError, TypeError):
                 continue
 
         total_valid = valid_count
@@ -1024,7 +1024,7 @@ def analyze_region(
 
 @lru_cache(maxsize=ANALYSIS_CACHE_SIZE)
 def _compute_analysis_cached(dem_path: str, slr: float, sample_limit: int, include_points_int: int):
-    """Cached analysis computation (include_points as int for hashability). Returns dict."""
+    # Cached analysis computation (include_points as int...
     include_points = bool(include_points_int)
     
     try:
@@ -1111,10 +1111,10 @@ def analyze(city: str, slr: float, sample_limit: int = 500, include_points: bool
     if not dem_file:
         raise HTTPException(status_code=404, detail=f"City '{city}' not found")
 
-    result = _compute_analysis_cached(dem_file, float(slr), sample_limit, int(include_points))
-    result["city"] = city
-    result["slr"] = float(slr)
-    return result
+    output = _compute_analysis_cached(dem_file, float(slr), sample_limit, int(include_points))
+    output["city"] = city
+    output["slr"] = float(slr)
+    return output
 
 
 @app.get("/resolve_slr")
@@ -1143,7 +1143,7 @@ def resolve_slr_endpoint(lat: float, lon: float, scenario: str,
 
 @app.get("/projection_info")
 def projection_info(lat: Optional[float] = None, lon: Optional[float] = None):
-    """Return available scenario metadata, optionally with full projection curves."""
+    # Return available scenario metadata, optionally wit...
     info = projection.get_available_info()
 
     if lat is not None and lon is not None:

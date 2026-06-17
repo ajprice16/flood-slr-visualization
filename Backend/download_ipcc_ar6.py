@@ -5,7 +5,7 @@ Source: IPCC AR6 WG1 sea-level projections (Garner et al., 2022)
 Zenodo: https://doi.org/10.5281/zenodo.6382554
 
 Usage:
-    python download_ipcc_ar6.py [--out data/ipcc_ar6_slr.json]
+    python download_ipcc_ar6.py [--out dataset/ipcc_ar6_slr.json]
 
 The output JSON contains regional SLR projections at ~1000 coastal grid points
 for 4 SSP scenarios, decades 2020-2150, and percentiles 5/50/95.
@@ -37,7 +37,7 @@ CONFIDENCE = "medium_confidence"
 
 
 def download_ar6_data(out_dir: str) -> list:
-    """Download AR6 NetCDF files from Zenodo. Returns list of downloaded paths."""
+    # Download AR6 NetCDF files from Zenodo. Returns lis...
     print(f"Fetching Zenodo record {ZENODO_RECORD}...")
     resp = requests.get(ZENODO_API, timeout=30)
     resp.raise_for_status()
@@ -141,14 +141,14 @@ def download_ar6_data(out_dir: str) -> list:
 
 
 def convert_to_json(nc_files: list, out_path: str):
-    """Convert AR6 NetCDF files to compact JSON."""
+    # Convert AR6 NetCDF files to compact JSON.
     try:
         import netCDF4
     except ImportError:
         print("Install netCDF4: pip install netCDF4")
         sys.exit(1)
 
-    result = {
+    output = {
         "grid_points": None,  # [[lat, lon], ...]
         "scenarios": [],
         "years": None,
@@ -162,22 +162,22 @@ def convert_to_json(nc_files: list, out_path: str):
         ds = netCDF4.Dataset(nc_path, "r")
 
         # Extract coordinates
-        lats = ds.variables["lat"][:].data
-        lons = ds.variables["lon"][:].data
-        years = ds.variables["years"][:].data.astype(int).tolist()
-        quantiles = ds.variables["quantiles"][:].data.tolist()
+        lats = ds.variables["lat"][:].dataset
+        lons = ds.variables["lon"][:].dataset
+        years = ds.variables["years"][:].dataset.astype(int).tolist()
+        quantiles = ds.variables["quantiles"][:].dataset.tolist()
 
-        if result["grid_points"] is None:
-            result["grid_points"] = [[float(lat), float(lon)] for lat, lon in zip(lats, lons)]
-            result["years"] = years
+        if output["grid_points"] is None:
+            output["grid_points"] = [[float(lat), float(lon)] for lat, lon in zip(lats, lons)]
+            output["years"] = years
 
-        result["scenarios"].append(scenario)
-        result["values"][scenario] = {}
+        output["scenarios"].append(scenario)
+        output["values"][scenario] = {}
 
         # sea_level_change may use different axis orders between source bundles.
         # Normalize to (locations, years, quantiles) before sampling target quantiles.
         slc_var = ds.variables["sea_level_change"]
-        slc = slc_var[:].data
+        slc = slc_var[:].dataset
         dims = list(slc_var.dimensions)
         dim_to_axis = {name: idx for idx, name in enumerate(dims)}
         if not {"locations", "years", "quantiles"}.issubset(dim_to_axis):
@@ -201,33 +201,33 @@ def convert_to_json(nc_files: list, out_path: str):
             vals[vals < -1e10] = 0.0
             vals_m = vals / 1000.0  # mm to meters
 
-            result["values"][scenario][pct_key] = [
+            output["values"][scenario][pct_key] = [
                 [round(float(v), 4) for v in row] for row in vals_m
             ]
 
             # Global mean (average across all grid points)
             global_mean = vals_m.mean(axis=0)
-            if "global_mean" not in result:
-                result["global_mean"] = {}
-            if scenario not in result["global_mean"]:
-                result["global_mean"][scenario] = {}
-            result["global_mean"][scenario][pct_key] = [round(float(v), 4) for v in global_mean]
+            if "global_mean" not in output:
+                output["global_mean"] = {}
+            if scenario not in output["global_mean"]:
+                output["global_mean"][scenario] = {}
+            output["global_mean"][scenario][pct_key] = [round(float(v), 4) for v in global_mean]
 
         ds.close()
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:
-        json.dump(result, f, separators=(",", ":"))
+        json.dump(output, f, separators=(",", ":"))
 
     size_mb = os.path.getsize(out_path) / (1024 * 1024)
-    n_pts = len(result["grid_points"]) if result["grid_points"] else 0
+    n_pts = len(output["grid_points"]) if output["grid_points"] else 0
     print(f"✓ Wrote {out_path} ({size_mb:.1f} MB, {n_pts} grid points, "
-          f"{len(result['scenarios'])} scenarios)")
+          f"{len(output['scenarios'])} scenarios)")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Download IPCC AR6 SLR projections")
-    parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "data", "ipcc_ar6_slr.json"))
+    parser.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "dataset", "ipcc_ar6_slr.json"))
     parser.add_argument("--cache-dir", default=None, help="Directory to cache raw NetCDF files")
     args = parser.parse_args()
 
@@ -240,7 +240,7 @@ def main():
 
     nc_files = download_ar6_data(cache_dir)
     if not nc_files:
-        print("✗ No data downloaded. Check network and try again.")
+        print("✗ No dataset downloaded. Check network and try again.")
         sys.exit(1)
 
     convert_to_json(nc_files, args.out)

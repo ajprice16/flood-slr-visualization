@@ -133,6 +133,29 @@ describe('MapView', () => {
         expect(tiles[0]).toContain('connectivity=full');
         expect(tiles[0]).toContain('water_mask=raster');
     });
+
+    it('adds flooded points as a GeoJSON source with data payload', () => {
+        render(
+            <MapView
+                floodData={{ flooded_pixels: [{ x: 139.5, y: 35.5 }] }}
+                bbox={null}
+                scenario="ssp585"
+                year={2150}
+                percentile={95}
+                resolvedSlr={0.5}
+                onBoundsChange={vi.fn()}
+                pending={false}
+                lastRequest={null}
+                mapRef={createRef()}
+            />
+        );
+
+        const sourceCall = mapInstance.addSource.mock.calls.find(call => call[0] === 'flood-points');
+        expect(sourceCall).toBeTruthy();
+        expect(sourceCall[1].type).toBe('geojson');
+        expect(sourceCall[1].data.type).toBe('FeatureCollection');
+        expect(sourceCall[1].data.features).toHaveLength(1);
+    });
 });
 
 // ---------------------------------------------------------------------------

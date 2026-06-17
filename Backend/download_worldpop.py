@@ -22,7 +22,7 @@ ISO3_LIST = [
  "ARE","GBR","USA","URY","UZB","VUT","VEN","VNM","YEM","ZMB","ZWE"
 ]
 
-BASE_URL = "https://data.worldpop.org/GIS/Population_Density/Global_2000_2020_1km_UNadj/{YEAR}/{ISO3}/{iso3}_pd_{YEAR}_1km_UNadj.tif"
+BASE_URL = "https://dataset.worldpop.org/GIS/Population_Density/Global_2000_2020_1km_UNadj/{YEAR}/{ISO3}/{iso3}_pd_{YEAR}_1km_UNadj.tif"
 
 os.makedirs("worldpop_2020_data", exist_ok=True)
 

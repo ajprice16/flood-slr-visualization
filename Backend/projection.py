@@ -3,7 +3,7 @@
 Loads regional SLR projections and resolves scenario+year+percentile to meters
 for any geographic location using spatial interpolation.
 
-Includes embedded global mean fallback data from AR6 Table 9.9 so the app
+Includes embedded global mean fallback dataset from AR6 Table 9.9 so the app
 works without downloading the full regional dataset.
 """
 
@@ -54,16 +54,16 @@ _GLOBAL_MEAN = {
 
 
 def load_projections(data_path: str) -> bool:
-    """Load IPCC AR6 regional projection data from JSON file.
+    """Load IPCC AR6 regional projection dataset from JSON file.
 
     If the file doesn't exist, the module still works using embedded global
-    mean values. Returns True if regional data loaded, False if using fallback.
+    mean values. Returns True if regional dataset loaded, False if using fallback.
     """
     global _projection_data, _kdtree
 
     if not os.path.exists(data_path):
         print(f"ℹ Regional IPCC projections not found at {data_path}")
-        print("  Using embedded global mean fallback (run download_ipcc_ar6.py for regional data)")
+        print("  Using embedded global mean fallback (run download_ipcc_ar6.py for regional dataset)")
         return False
 
     try:
@@ -89,12 +89,12 @@ def load_projections(data_path: str) -> bool:
 
 
 def is_loaded() -> bool:
-    """True if regional data is loaded; False means global mean fallback."""
+    # True if regional dataset is loaded; False means gl...
     return _projection_data is not None and _kdtree is not None
 
 
 def _interpolate_years(values: list, years: list, target_year: int) -> float:
-    """Linearly interpolate a value for a target year from decade-spaced data."""
+    # Linearly interpolate a value for a target year fro...
     if target_year <= years[0]:
         return values[0]
     if target_year >= years[-1]:
@@ -107,7 +107,7 @@ def _interpolate_years(values: list, years: list, target_year: int) -> float:
 
 
 def _resolve_global_mean(scenario: str, year: int, percentile: int) -> Optional[float]:
-    """Resolve SLR from embedded global mean data."""
+    # Resolve SLR from embedded global mean dataset....
     pct_key = str(percentile)
     gm = _GLOBAL_MEAN.get(scenario, {}).get(pct_key)
     if gm is None:
@@ -121,7 +121,7 @@ def resolve_slr(lat: float, lon: float, scenario: str, year: int,
     """Resolve regional SLR in meters for a location and scenario.
 
     Uses inverse-distance weighted interpolation from nearest IPCC grid points.
-    Falls back to global mean if no regional data or no grid point within 5 degrees.
+    Falls back to global mean if no regional dataset or no grid point within 5 degrees.
 
     Args:
         lat, lon: Geographic coordinates (EPSG:4326)
@@ -137,20 +137,20 @@ def resolve_slr(lat: float, lon: float, scenario: str, year: int,
     if percentile not in PERCENTILES:
         return None
 
-    # Without regional data, use global mean
+    # Without regional dataset, use global mean
     if not is_loaded():
         return _resolve_global_mean(scenario, year, percentile)
 
-    data = _projection_data
+    dataset = _projection_data
     pct_key = str(percentile)
-    if pct_key not in data["values"].get(scenario, {}):
+    if pct_key not in dataset["values"].get(scenario, {}):
         return _resolve_global_mean(scenario, year, percentile)
 
-    years = data["years"]
+    years = dataset["years"]
 
     # Find nearest grid points (up to 4 for IDW)
     query_rad = np.radians([lat, lon])
-    k = min(4, len(data["grid_points"]))
+    k = min(4, len(dataset["grid_points"]))
     dists, indices = _kdtree.query(query_rad, k=k)
 
     if np.isscalar(dists):
@@ -163,7 +163,7 @@ def resolve_slr(lat: float, lon: float, scenario: str, year: int,
         return _resolve_global_mean(scenario, year, percentile)
 
     # IDW interpolation from nearby grid points
-    values_arr = data["values"][scenario][pct_key]
+    values_arr = dataset["values"][scenario][pct_key]
     total_weight = 0.0
     weighted_val = 0.0
 
@@ -174,9 +174,9 @@ def resolve_slr(lat: float, lon: float, scenario: str, year: int,
 
         # Interpolate across years for this grid point
         point_values = values_arr[int(idx)]
-        val = _interpolate_years(point_values, years, year)
+        value = _interpolate_years(point_values, years, year)
 
-        weighted_val += weight * val
+        weighted_val += weight * value
         total_weight += weight
 
     if total_weight == 0:
@@ -186,11 +186,11 @@ def resolve_slr(lat: float, lon: float, scenario: str, year: int,
 
 
 def get_projection_at(lat: float, lon: float) -> Dict:
-    """Get full projection table for a location (all scenarios, years, percentiles)."""
+    # Get full projection table for a location (all scen...
     source = "regional" if is_loaded() else "global_mean"
     years = _projection_data["years"] if is_loaded() else _GLOBAL_MEAN_YEARS
 
-    result = {
+    output = {
         "source": source,
         "years": years,
         "lat": lat,
@@ -199,19 +199,19 @@ def get_projection_at(lat: float, lon: float) -> Dict:
     }
 
     for scenario in SCENARIOS:
-        result["scenarios"][scenario] = {}
+        output["scenarios"][scenario] = {}
         for pct in PERCENTILES:
             vals = []
             for yr in years:
                 v = resolve_slr(lat, lon, scenario, yr, pct)
                 vals.append(round(v, 4) if v is not None else None)
-            result["scenarios"][scenario][str(pct)] = vals
+            output["scenarios"][scenario][str(pct)] = vals
 
-    return result
+    return output
 
 
 def get_available_info() -> Dict:
-    """Return metadata about available projections."""
+    # Return metadata about available projections.
     return {
         "regional_loaded": is_loaded(),
         "scenarios": SCENARIOS,

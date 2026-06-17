@@ -104,8 +104,8 @@ export default function App() {
         const centerLon = (bbox.lon_min + bbox.lon_max) / 2;
         let cancelled = false;
         fetchResolvedSlr(centerLat, centerLon, scenario, year, percentile)
-            .then(result => {
-                if (!cancelled) setResolvedSlr(result.data);
+            .then(output => {
+                if (!cancelled) setResolvedSlr(output.dataset);
             })
             .catch(() => {}); // non-critical, silent fail
         return () => { cancelled = true; };
@@ -124,9 +124,9 @@ export default function App() {
         const handle = setTimeout(async () => {
             const start = performance.now();
             try {
-                const result = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
-                setFloodData(result.data);
-                setLastRequest({ status: result.status, ok: result.ok, durationMs: result.durationMs });
+                const output = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
+                setFloodData(output.dataset);
+                setLastRequest({ status: output.status, ok: output.ok, durationMs: output.durationMs });
             } catch (e) {
                 if (e.name === 'AbortError') return;
                 const durationMs = (e.durationMs != null) ? e.durationMs : (performance.now() - start);
@@ -152,9 +152,9 @@ export default function App() {
         controllerRef.current = controller;
         const start = performance.now();
         try {
-            const result = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
-            setFloodData(result.data);
-            setLastRequest({ status: result.status, ok: result.ok, durationMs: result.durationMs });
+            const output = await analyzeRegion(bbox, { scenario, year, percentile }, { signal: controller.signal });
+            setFloodData(output.dataset);
+            setLastRequest({ status: output.status, ok: output.ok, durationMs: output.durationMs });
             setError(null);
         } catch (e) {
             if (e.name !== 'AbortError') {

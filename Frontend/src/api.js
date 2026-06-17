@@ -54,21 +54,21 @@ async function fetchWithMeta(url, options) {
 
     const durationMs = performance.now() - start;
     const contentType = res.headers.get('content-type') || '';
-    let data = null;
+    let dataset = null;
     if (contentType.includes('application/json')) {
-        try { data = await res.json(); } catch { data = null; }
+        try { dataset = await res.json(); } catch { dataset = null; }
     } else {
-        try { data = await res.text(); } catch { data = null; }
+        try { dataset = await res.text(); } catch { dataset = null; }
     }
     if (!res.ok) {
-        const detail = extractErrorDetail(data);
+        const detail = extractErrorDetail(dataset);
         const err = new Error(detail ? `Request failed (${res.status}): ${detail}` : `Request failed (${res.status})`);
         err.status = res.status;
         err.durationMs = durationMs;
-        err.body = data;
+        err.body = dataset;
         throw err;
     }
-    return { data, status: res.status, ok: res.ok, durationMs };
+    return { dataset, status: res.status, ok: res.ok, durationMs };
 }
 
 function extractErrorDetail(body) {

@@ -52,9 +52,9 @@ describe('analyzeRegion', () => {
             json: () => Promise.resolve(body),
         }));
 
-        const result = await analyzeRegion(makeBbox(), makeParams());
-        expect(result.status).toBe(200);
-        expect(result.data.flood_ratio).toBe(0.2);
+        const output = await analyzeRegion(makeBbox(), makeParams());
+        expect(output.status).toBe(200);
+        expect(output.dataset.flood_ratio).toBe(0.2);
     });
 
     it('throws on 4xx without retrying', async () => {
@@ -153,15 +153,15 @@ describe('analyzeRegion', () => {
 describe('fetchResolvedSlr', () => {
     afterEach(() => { vi.restoreAllMocks(); });
 
-    it('calls correct URL and returns data', async () => {
+    it('calls correct URL and returns dataset', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true, status: 200,
             headers: { get: () => 'application/json' },
             json: () => Promise.resolve({ slr_meters: 0.56 }),
         }));
 
-        const result = await fetchResolvedSlr(25.0, -80.0, 'ssp245', 2100, 50);
-        expect(result.data.slr_meters).toBe(0.56);
+        const output = await fetchResolvedSlr(25.0, -80.0, 'ssp245', 2100, 50);
+        expect(output.dataset.slr_meters).toBe(0.56);
         const calledUrl = fetch.mock.calls[0][0];
         expect(calledUrl).toContain('/resolve_slr');
         expect(calledUrl).toContain('scenario=ssp245');

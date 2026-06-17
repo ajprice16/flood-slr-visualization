@@ -24,7 +24,7 @@ if BACKEND_DIR not in sys.path:
 # ---------------------------------------------------------------------------
 
 def make_fake_dem_bytes(elevation_array: np.ndarray = None) -> bytes:
-    """Return the bytes of a minimal in-memory GeoTIFF."""
+    # Return the bytes of a minimal in-memory GeoTIFF....
     import rasterio
     from rasterio.transform import from_bounds
 
@@ -47,14 +47,14 @@ def make_fake_dem_bytes(elevation_array: np.ndarray = None) -> bytes:
 
 @pytest.fixture(scope="session")
 def fake_dem_bytes():
-    """Session-scoped fixture: in-memory 10×10 zero-elevation GeoTIFF."""
+    # Session-scoped fixture: in-memory 10×10 zero-eleva...
     arr = np.zeros((10, 10), dtype=np.float32)
     return make_fake_dem_bytes(arr)
 
 
 @pytest.fixture(scope="session")
 def fake_dem_bytes_low():
-    """Session-scoped fixture: 10×10 DEM where all elevations are 0.5 m (floods at slr>0.5)."""
+    # Session-scoped fixture: 10×10 DEM where all elevat...
     arr = np.full((10, 10), 0.5, dtype=np.float32)
     return make_fake_dem_bytes(arr)
 
@@ -68,7 +68,7 @@ def test_client():
     """Return a Starlette/FastAPI TestClient with the lifespan bypassed.
 
     The lifespan calls build_tile_index(), load_population_data() and
-    tries to load optional data files.  We patch those functions to no-ops
+    tries to load optional dataset files.  We patch those functions to no-ops
     so the client can be created in a clean test environment.
     """
     from contextlib import asynccontextmanager
@@ -80,7 +80,7 @@ def test_client():
 
     with patch("main.lifespan", _noop_lifespan), \
          patch("main.build_tile_index", return_value={}), \
-         patch("main.load_population_data", return_value=False):
+            patch("main.load_population_data", return_value=False):
         import main as app_module
         # Replace the lifespan on the already-created app instance
         app_module.app.router.lifespan_context = _noop_lifespan

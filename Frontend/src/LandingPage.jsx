@@ -64,7 +64,7 @@ export default function LandingPage({ onProceed }) {
                         }}>
                             <p>
                                 The sea level rise maps and visualizations on this website are intended for general 
-                                informational and educational purposes only. The data displayed is sourced from publicly 
+                                informational and educational purposes only. The dataset displayed is sourced from publicly 
                                 available scientific datasets and models; while we strive for accuracy, we cannot guarantee 
                                 that all information is complete, current, or free from error.
                             </p>

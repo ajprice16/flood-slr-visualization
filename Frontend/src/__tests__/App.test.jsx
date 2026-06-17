@@ -18,18 +18,18 @@ vi.mock('maplibre-gl', () => import('./__mocks__/maplibre-gl.js'));
 // Stub API calls so effects don't fail or interfere
 vi.mock('../api', () => ({
     analyzeRegion: vi.fn().mockResolvedValue({
-        data: { flood_ratio: 0.1, flooded_count: 10, tiles_used: [], flooded_pixels: [] },
+        dataset: { flood_ratio: 0.1, flooded_count: 10, tiles_used: [], flooded_pixels: [] },
         status: 200,
         ok: true,
         durationMs: 50,
     }),
     fetchResolvedSlr: vi.fn().mockResolvedValue({
-        data: { slr_meters: 0.56, projection_source: 'global_mean' },
+        dataset: { slr_meters: 0.56, projection_source: 'global_mean' },
         status: 200,
         ok: true,
         durationMs: 20,
     }),
-    fetchProjectionInfo: vi.fn().mockResolvedValue({ data: {}, status: 200, ok: true }),
+    fetchProjectionInfo: vi.fn().mockResolvedValue({ dataset: {}, status: 200, ok: true }),
 }));
 
 // Stub fetch for story text files
