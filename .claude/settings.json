@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/exouser/Documents/ProjWeb/flood-slr-visualization/.claude/hooks/run-pytest.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash /home/exouser/Documents/ProjWeb/flood-slr-visualization/.claude/hooks/run-vitest.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

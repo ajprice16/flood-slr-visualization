@@ -284,24 +284,43 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
     return (
         <div style={{ position: "relative", width: "100%", height: "100%" }}>
             <div ref={mapContainer} style={{ position: "absolute", inset: 0 }} />
-            <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "6px 10px", borderRadius: 4, fontSize: 12, display:"flex", flexDirection:"column", gap:4 }}>
-                <div>
-                    {pending ? "Analyzing…" : "Ready"}
-                    {floodData?.tiles_used && (
-                        <span style={{ marginLeft: 8 }}>Tiles: {floodData.tiles_used.length}</span>
+            {import.meta.env.DEV && (
+                <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,0.55)", color: "#fff", padding: "6px 10px", borderRadius: 4, fontSize: 12, display:"flex", flexDirection:"column", gap:4 }}>
+                    <div>
+                        {pending ? "Analyzing…" : "Ready"}
+                        {floodData?.tiles_used && (
+                            <span style={{ marginLeft: 8 }}>Tiles: {floodData.tiles_used.length}</span>
+                        )}
+                    </div>
+                    {lastRequest && (
+                        <div style={{
+                            color: lastRequest.ok ? "#a8f7a8" : "#ffb3b3"
+                        }}>
+                            Last: {Math.round(lastRequest.durationMs)}ms (status {lastRequest.status}{lastRequest.error ? " error" : ""})
+                        </div>
                     )}
                 </div>
-                {lastRequest && (
-                    <div style={{
-                        color: lastRequest.ok ? "#a8f7a8" : "#ffb3b3"
-                    }}>
-                        Last: {Math.round(lastRequest.durationMs)}ms (status {lastRequest.status}{lastRequest.error ? " error" : ""})
-                    </div>
-                )}
+            )}
+            <div style={{
+                position: "absolute",
+                bottom: 80,
+                right: 8,
+                background: "rgba(255,255,255,0.92)",
+                borderRadius: 4,
+                padding: "6px 10px",
+                fontSize: 11,
+                boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                pointerEvents: "none",
+            }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Flood Risk</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 16, height: 16, background: "rgba(0, 0, 255, 0.63)", borderRadius: 2, flexShrink: 0 }} />
+                    <span>Projected inundation</span>
+                </div>
             </div>
-            <div style={{ 
-                position: "absolute", 
-                bottom: 8, 
+            <div style={{
+                position: "absolute",
+                bottom: 8,
                 left: 8, 
                 background: "rgba(0,0,0,0.6)", 
                 color: "#fff", 

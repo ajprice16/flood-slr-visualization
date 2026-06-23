@@ -29,7 +29,7 @@ export default function LandingPage({ onProceed }) {
                     textAlign: "center"
                 }}>
                     <h1 style={{ margin: "0 0 12px 0", fontSize: "2.5em", fontWeight: "700" }}>
-                        Flood & Sea Level Rise Visualization
+                        Sea Level Rise Explorer
                     </h1>
                     <p style={{ margin: "0", fontSize: "1.1em", opacity: 0.95 }}>
                         Explore projected flood risks under different climate scenarios
@@ -52,7 +52,7 @@ export default function LandingPage({ onProceed }) {
                             borderBottom: "3px solid #667eea",
                             paddingBottom: "10px"
                         }}>
-                            ⚠️ Important Disclaimer
+                            Important Disclaimer
                         </h2>
                         <div style={{
                             background: "#f8f9fa",
@@ -92,27 +92,24 @@ export default function LandingPage({ onProceed }) {
                         </div>
 
                         {/* Acceptance Checkbox */}
-                        <div style={{
+                        <label style={{
                             display: "flex",
                             alignItems: "center",
                             marginTop: "20px",
-                            gap: "10px"
+                            gap: "10px",
+                            cursor: "pointer",
+                            fontSize: "0.95em",
+                            color: "#555",
+                            padding: "4px 0",
                         }}>
                             <input
                                 type="checkbox"
-                                id="acceptDisclaimer"
                                 checked={disclaimerAccepted}
                                 onChange={(e) => setDisclaimerAccepted(e.target.checked)}
-                                style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                                style={{ width: "18px", height: "18px", cursor: "pointer", flexShrink: 0 }}
                             />
-                            <label htmlFor="acceptDisclaimer" style={{
-                                cursor: "pointer",
-                                fontSize: "0.95em",
-                                color: "#555"
-                            }}>
-                                I acknowledge and accept the disclaimer
-                            </label>
-                        </div>
+                            I acknowledge and accept the disclaimer
+                        </label>
                     </div>
 
                     {/* CTA Button */}
@@ -150,7 +147,7 @@ export default function LandingPage({ onProceed }) {
                             color: "#333",
                             marginBottom: "20px"
                         }}>
-                            📚 Resources & Links
+                            Resources & Links
                         </h3>
                         <div style={{
                             display: "grid",
@@ -180,12 +177,6 @@ export default function LandingPage({ onProceed }) {
                                     e.currentTarget.style.borderColor = "transparent";
                                 }}
                             >
-                                <div style={{
-                                    fontSize: "1.2em",
-                                    marginBottom: "8px"
-                                }}>
-                                    📖
-                                </div>
                                 <div style={{
                                     fontWeight: "600",
                                     color: "#667eea",
@@ -225,12 +216,6 @@ export default function LandingPage({ onProceed }) {
                                 }}
                             >
                                 <div style={{
-                                    fontSize: "1.2em",
-                                    marginBottom: "8px"
-                                }}>
-                                    🔗
-                                </div>
-                                <div style={{
                                     fontWeight: "600",
                                     color: "#333",
                                     marginBottom: "4px"
@@ -269,12 +254,6 @@ export default function LandingPage({ onProceed }) {
                                 }}
                             >
                                 <div style={{
-                                    fontSize: "1.2em",
-                                    marginBottom: "8px"
-                                }}>
-                                    🌍
-                                </div>
-                                <div style={{
                                     fontWeight: "600",
                                     color: "#ff9800",
                                     marginBottom: "4px"
@@ -312,12 +291,6 @@ export default function LandingPage({ onProceed }) {
                                     e.currentTarget.style.borderColor = "transparent";
                                 }}
                             >
-                                <div style={{
-                                    fontSize: "1.2em",
-                                    marginBottom: "8px"
-                                }}>
-                                    🌊
-                                </div>
                                 <div style={{
                                     fontWeight: "600",
                                     color: "#2196f3",

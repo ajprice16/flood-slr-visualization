@@ -341,7 +341,7 @@ export default function App() {
             {/* Sidebar - hide in story mode */}
             {!storyMode && (
                 <div style={{ width: "300px", padding: "15px", background: "#eee", overflowY: "auto" }}>
-                <h2 style={{ margin: "0 0 12px 0" }}>IPCC Projections</h2>
+                <h2 style={{ margin: "0 0 12px 0" }}>Sea Level Rise Explorer</h2>
 
                 {/* Scenario Selector */}
                 <div style={{ marginBottom: "12px" }}>
@@ -372,7 +372,14 @@ export default function App() {
 
                 {/* Percentile Toggle */}
                 <div style={{ marginBottom: "12px" }}>
-                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Model Run Skew</label>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>
+                        Uncertainty Level{" "}
+                        <span
+                            title="Controls which percentile of model runs is shown. Low = optimistic, Median = most likely, High = worst-case."
+                            style={{ cursor: "help", fontSize: "0.85em", color: "#555" }}
+                            aria-label="What is Uncertainty Level?"
+                        >&#x2139;</span>
+                    </label>
                     <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
                         {[
                             { value: 5, label: "Low (5th)" },
@@ -402,7 +409,14 @@ export default function App() {
 
                 {/* Connectivity Mode */}
                 <div style={{ marginBottom: "12px" }}>
-                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>Connectivity</label>
+                    <label style={{ fontWeight: "600", fontSize: "0.85em" }}>
+                        Flood Spread Mode{" "}
+                        <span
+                            title="Boundary (default): only shows flooding connected to the ocean edge. None: shows all below-threshold pixels. 3x3 Mosaic: flood propagates across tile boundaries for a seamless view."
+                            style={{ cursor: "help", fontSize: "0.85em", color: "#555" }}
+                            aria-label="What is Flood Spread Mode?"
+                        >&#x2139;</span>
+                    </label>
                     <div style={{ display: "flex", gap: "4px", marginTop: "4px" }}>
                         {[
                             { value: "boundary", label: "Boundary" },
@@ -475,10 +489,11 @@ export default function App() {
                 </div>
 
                 <button
-                    onClick={() => setForceRefresh(prev => prev + 1)}
+                    onClick={cancelAndRestart}
+                    disabled={!bbox || pending}
                     style={{marginTop:"4px", padding:"8px 12px", cursor:"pointer", background:"#007acc", color:"#fff", border:"none", borderRadius:"4px", width:"100%"}}
                 >
-                    Refresh Analysis
+                    Run Analysis for Current View
                 </button>
 
                 {pending && <div style={{marginTop:"10px"}}>Analyzing...</div>}
@@ -494,7 +509,13 @@ export default function App() {
                         <h3 style={{margin:"4px 0"}}>Stats</h3>
                         <div><strong>Tiles Used:</strong> {floodData.tiles_used?.length || 0}</div>
                         <div><strong>Flood Ratio:</strong> {(floodData.flood_ratio*100).toFixed(2)}%</div>
-                        <div><strong>Flooded Pixels:</strong> {floodData.flooded_count?.toLocaleString()}</div>
+                        <div>
+                            <strong>Flooded Area:</strong>{" "}
+                            {floodData.flooded_count != null
+                                ? `${((floodData.flooded_count * 30 * 30) / 1_000_000).toFixed(1)} km²`
+                                : "—"}
+                            <span style={{color:"#888", fontSize:"0.85em"}}>{" "}({floodData.flooded_count?.toLocaleString()} px)</span>
+                        </div>
                         <div><strong>Elevation Range:</strong> {floodData.elevation_min?.toFixed(1)}m to {floodData.elevation_max?.toFixed(1)}m</div>
                         {floodData.estimated_population_affected != null && (
                             <div style={{marginTop:"8px", padding:"8px", background:"#fff3cd", borderRadius:"4px"}}>
@@ -509,13 +530,6 @@ export default function App() {
                                 {Math.round(lastRequest.durationMs)} ms (status {lastRequest.status}){lastRequest.error ? ' - failed' : ''}
                             </div>
                         )}
-                        <button
-                            onClick={cancelAndRestart}
-                            disabled={!bbox || pending}
-                            style={{marginTop:"8px", padding:"6px 10px", fontSize:"12px", cursor:"pointer"}}
-                        >
-                            Reanalyze current view
-                        </button>
                     </div>
                 )}
 
