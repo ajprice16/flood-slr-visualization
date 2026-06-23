@@ -1,9 +1,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
 import MapView from "./MapView";
 import StoryMap from "./StoryMap";
 import LandingPage from "./LandingPage";
+import PopulationChart from "./PopulationChart";
 import { analyzeRegion, fetchResolvedSlr } from "./api";
+import { parseUrlState, buildShareUrl } from "./urlState";
 
 const SCENARIO_LABELS = {
     ssp126: "SSP1-2.6 (Very Low)",
@@ -13,22 +16,28 @@ const SCENARIO_LABELS = {
 };
 
 export default function App() {
+    const urlState = useRef(parseUrlState()).current;
     const [showLanding, setShowLanding] = useState(true);
     const [bbox, setBbox] = useState(null);
-    const [scenario, setScenario] = useState("ssp245");
-    const [year, setYear] = useState(2100);
-    const [percentile, setPercentile] = useState(50);
-    const [connectivityMode, setConnectivityMode] = useState("boundary");
-    const [waterMaskMode, setWaterMaskMode] = useState("none");
+    const [scenario, setScenario] = useState(urlState.scenario ?? "ssp245");
+    const [year, setYear] = useState(urlState.year ?? 2100);
+    const [percentile, setPercentile] = useState(urlState.percentile ?? 50);
+    const [connectivityMode, setConnectivityMode] = useState(urlState.connectivity ?? "boundary");
+    const [waterMaskMode, setWaterMaskMode] = useState(urlState.waterMask ?? "none");
     const [resolvedSlr, setResolvedSlr] = useState(null);
     const [floodData, setFloodData] = useState(null);
     const [pending, setPending] = useState(false);
     const [error, setError] = useState(null);
-    const [zoom, setZoom] = useState(9);
+    const [zoom, setZoom] = useState(urlState.view?.zoom ?? 9);
     const [lastRequest, setLastRequest] = useState(null);
     const [forceRefresh, setForceRefresh] = useState(0);
     const [storyMode, setStoryMode] = useState(false);
     const [currentStory, setCurrentStory] = useState(0);
+    const [showShare, setShowShare] = useState(false);
+    const [showTrend, setShowTrend] = useState(false);
+    const [shareUrl, setShareUrl] = useState("");
+    const [shareQr, setShareQr] = useState("");
+    const [copied, setCopied] = useState(false);
     const mapRef = useRef(null);
     const controllerRef = useRef(null);
 
@@ -172,6 +181,43 @@ export default function App() {
         if (bounds.zoom != null) setZoom(bounds.zoom);
     }, []);
 
+    const currentCenter = bbox
+        ? [(bbox.lon_min + bbox.lon_max) / 2, (bbox.lat_min + bbox.lat_max) / 2]
+        : null;
+
+    // Keep the URL in sync with the current view so it is always shareable.
+    useEffect(() => {
+        const url = buildShareUrl({
+            scenario, year, percentile,
+            connectivity: connectivityMode, waterMask: waterMaskMode,
+            center: currentCenter, zoom,
+        });
+        const handle = setTimeout(() => window.history.replaceState(null, "", url), 300);
+        return () => clearTimeout(handle);
+    }, [scenario, year, percentile, connectivityMode, waterMaskMode,
+        bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, zoom]);
+
+    const openShare = useCallback(() => {
+        const url = buildShareUrl({
+            scenario, year, percentile,
+            connectivity: connectivityMode, waterMask: waterMaskMode,
+            center: currentCenter, zoom,
+        });
+        setShareUrl(url);
+        setCopied(false);
+        setShowShare(true);
+        QRCode.toDataURL(url, { width: 220, margin: 1 }).then(setShareQr).catch(() => setShareQr(""));
+    }, [scenario, year, percentile, connectivityMode, waterMaskMode,
+        bbox?.lon_min, bbox?.lat_min, bbox?.lon_max, bbox?.lat_max, zoom]);
+
+    const copyShare = useCallback(() => {
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(shareUrl)
+                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+                .catch(() => {});
+        }
+    }, [shareUrl]);
+
     const effectiveSlr = resolvedSlr?.slr_meters ?? null;
 
     // Show landing page if user hasn't accepted disclaimer
@@ -205,6 +251,78 @@ export default function App() {
             >
                 {storyMode ? "Exit Story" : "Start Story"}
             </button>
+
+            {/* Share button */}
+            {!storyMode && (
+                <button
+                    onClick={openShare}
+                    style={{
+                        position: "absolute",
+                        top: "16px",
+                        right: "140px",
+                        zIndex: 2000,
+                        padding: "10px 20px",
+                        background: "#fff",
+                        color: "#007acc",
+                        border: "1px solid #007acc",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: "600",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                    }}
+                >
+                    Share
+                </button>
+            )}
+
+            {/* Share modal */}
+            {showShare && (
+                <div
+                    onClick={() => setShowShare(false)}
+                    style={{
+                        position: "absolute", inset: 0, zIndex: 3000,
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: "#fff", borderRadius: "8px", padding: "24px",
+                            width: "320px", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", textAlign: "center",
+                        }}
+                    >
+                        <h3 style={{ margin: "0 0 12px 0" }}>Share this view</h3>
+                        <p style={{ fontSize: "0.85em", color: "#666", margin: "0 0 12px 0" }}>
+                            Scan or copy the link to open this exact map, scenario, year, and percentile.
+                        </p>
+                        {shareQr && (
+                            <img src={shareQr} alt="QR code for this view" width={220} height={220} style={{ display: "block", margin: "0 auto 12px" }} />
+                        )}
+                        <input
+                            readOnly
+                            value={shareUrl}
+                            onFocus={(e) => e.target.select()}
+                            style={{ width: "100%", padding: "6px", fontSize: "12px", boxSizing: "border-box", marginBottom: "8px" }}
+                        />
+                        <div style={{ display: "flex", gap: "8px" }}>
+                            <button
+                                onClick={copyShare}
+                                style={{ flex: 1, padding: "8px", cursor: "pointer", background: "#007acc", color: "#fff", border: "none", borderRadius: "4px" }}
+                            >
+                                {copied ? "Copied!" : "Copy link"}
+                            </button>
+                            <button
+                                onClick={() => setShowShare(false)}
+                                style={{ flex: 1, padding: "8px", cursor: "pointer", background: "#eee", color: "#333", border: "none", borderRadius: "4px" }}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Story Panel */}
             {storyMode && (
@@ -400,6 +518,21 @@ export default function App() {
                         </button>
                     </div>
                 )}
+
+                <button
+                    onClick={() => setShowTrend(v => !v)}
+                    style={{marginTop:"12px", padding:"6px 10px", fontSize:"12px", cursor:"pointer", background:"#fff", color:"#007acc", border:"1px solid #007acc", borderRadius:"4px", width:"100%"}}
+                >
+                    {showTrend ? "Hide trend" : "Show trend over time"}
+                </button>
+                {showTrend && (
+                    <PopulationChart
+                        bbox={bbox}
+                        scenario={scenario}
+                        percentile={percentile}
+                        currentYear={year}
+                    />
+                )}
             </div>
             )}
 
@@ -413,6 +546,7 @@ export default function App() {
                     resolvedSlr={effectiveSlr}
                     connectivityMode={connectivityMode}
                     waterMaskMode={waterMaskMode}
+                    initialView={urlState.view}
                     onBoundsChange={handleBoundsChange}
                     pending={pending}
                     lastRequest={lastRequest}

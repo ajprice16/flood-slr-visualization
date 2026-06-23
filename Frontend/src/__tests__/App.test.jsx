@@ -66,7 +66,7 @@ describe('App', () => {
 
     it('shows scenario selector dropdown', async () => {
         await enterMap();
-        expect(screen.getByText(/SSP2-4.5/i)).toBeTruthy();
+        expect(screen.getByRole('option', { name: /SSP2-4.5/i })).toBeTruthy();
     });
 
     it('shows projection year slider', async () => {

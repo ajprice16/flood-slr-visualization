@@ -3,7 +3,7 @@ import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
 import { escapeHtml } from "./utils";
 
-export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
+export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", initialView = null, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
     const debounceRef = useRef(null);
@@ -56,8 +56,8 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                     sources: {},
                     layers: []
                 },
-                center: [-80.19, 25.76],
-                zoom: 9,
+                center: initialView?.center || [-80.19, 25.76],
+                zoom: initialView?.zoom != null ? initialView.zoom : 9,
             });
             const map = mapRef.current;
 
