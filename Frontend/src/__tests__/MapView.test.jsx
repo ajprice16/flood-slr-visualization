@@ -55,6 +55,34 @@ describe('MapView', () => {
         expect(container).toBeTruthy();
     });
 
+    it('emits initial bounds on load even when the style is already loaded', () => {
+        // Reproduce the real maplibre behaviour the shared mock otherwise hides:
+        // the style is already loaded, so a handler registered on the 'load'
+        // event never fires. The initial viewport bounds must still be emitted so
+        // analysis + the flood overlay start on load, without the user panning.
+        mapInstance.isStyleLoaded.mockReturnValue(true);
+        mapInstance.on.mockImplementation(() => {}); // 'load' never re-fires
+        const onBoundsChange = vi.fn();
+        render(
+            <MapView
+                floodData={null}
+                bbox={null}
+                scenario="ssp245"
+                year={2100}
+                percentile={50}
+                resolvedSlr={null}
+                onBoundsChange={onBoundsChange}
+                pending={false}
+                lastRequest={null}
+                mapRef={createRef()}
+            />
+        );
+        expect(onBoundsChange).toHaveBeenCalledTimes(1);
+        expect(onBoundsChange).toHaveBeenCalledWith(
+            expect.objectContaining({ lon_min: -81, lon_max: -79, lat_min: 24, lat_max: 26, zoom: 9 })
+        );
+    });
+
     it('renders status overlay with "Ready" when not pending', () => {
         render(
             <MapView

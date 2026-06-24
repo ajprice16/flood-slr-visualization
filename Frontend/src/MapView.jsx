@@ -149,16 +149,21 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
                 }
             };
 
-            if (map.isStyleLoaded()) {
+            // Run setup + emit the initial viewport bounds once the style is
+            // ready. emitBoundsImmediate must live in this same handler: if it is
+            // registered separately on 'load' it is missed whenever the (empty)
+            // style is already loaded by the time this effect runs, leaving bbox
+            // null so no analysis/flood overlay runs until the user pans the map.
+            const onReady = () => {
                 addBasemap();
                 addCityMarkers();
+                emitBoundsImmediate();
+            };
+            if (map.isStyleLoaded()) {
+                onReady();
             } else {
-                map.on('load', () => {
-                    addBasemap();
-                    addCityMarkers();
-                });
+                map.on('load', onReady);
             }
-            map.on('load', emitBoundsImmediate);
             map.on('moveend', emitBoundsDebounced);
         }
 
@@ -172,7 +177,6 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             cityMarkersRef.current.forEach(marker => marker.remove());
             cityMarkersRef.current = [];
             if (mapRef.current) {
-                mapRef.current.off('load', emitBoundsImmediate);
                 mapRef.current.off('moveend', emitBoundsDebounced);
                 mapRef.current.remove();
                 mapRef.current = null;

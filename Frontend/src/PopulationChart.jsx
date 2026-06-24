@@ -38,7 +38,7 @@ export default function PopulationChart({ bbox, scenario, percentile, currentYea
                 const results = await Promise.all(
                     YEARS.map((y) =>
                         analyzeRegion(bbox, { scenario, year: y, percentile }, { signal: controller.signal })
-                            .then((r) => ({ year: y, pop: r.data?.estimated_population_affected ?? null }))
+                            .then((r) => ({ year: y, pop: r.dataset?.estimated_population_affected ?? null }))
                             .catch(() => ({ year: y, pop: null }))
                     )
                 );
