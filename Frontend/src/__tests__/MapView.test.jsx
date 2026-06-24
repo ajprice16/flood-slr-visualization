@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import React, { createRef } from 'react';
 
 // Mock maplibre-gl before importing MapView
@@ -32,6 +32,9 @@ beforeEach(() => {
     mapInstance.setPaintProperty.mockReset();
     mapInstance.on.mockImplementation((event, fn) => {
         if (event === 'load') fn();
+    });
+    mapInstance.once.mockReset().mockImplementation((event, fn) => {
+        if (event === 'load' || event === 'idle') fn();
     });
     mapInstance.isStyleLoaded.mockReturnValue(true);
 });
@@ -81,6 +84,69 @@ describe('MapView', () => {
         expect(onBoundsChange).toHaveBeenCalledWith(
             expect.objectContaining({ lon_min: -81, lon_max: -79, lat_min: 24, lat_max: 26, zoom: 9 })
         );
+    });
+
+    it('adds the flood overlay once the style settles, even after load has fired', () => {
+        // Reproduce the real condition: the one-shot 'load' has already fired (on
+        // is a no-op) and the style is still settling (isStyleLoaded false). The
+        // overlay must still appear when the map goes idle — without the user
+        // changing any control.
+        mapInstance.isStyleLoaded.mockReturnValue(false);
+        mapInstance.on.mockImplementation(() => {});
+        let idleHandler = null;
+        mapInstance.once.mockImplementation((event, fn) => { if (event === 'idle') idleHandler = fn; });
+
+        render(
+            <MapView
+                floodData={null}
+                bbox={null}
+                scenario="ssp245"
+                year={2100}
+                percentile={50}
+                resolvedSlr={0.5}
+                onBoundsChange={vi.fn()}
+                pending={false}
+                lastRequest={null}
+                mapRef={createRef()}
+            />
+        );
+
+        // Overlay not added while the style is unsettled.
+        expect(mapInstance.addLayer).not.toHaveBeenCalled();
+
+        // Map settles -> 'idle' fires -> overlay added with no state change.
+        mapInstance.isStyleLoaded.mockReturnValue(true);
+        act(() => { idleHandler && idleHandler(); });
+
+        expect(mapInstance.addLayer).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'flood-raster-layer' }),
+            undefined
+        );
+    });
+
+    it('cancels a stale idle handler when state changes before the map settles', () => {
+        // Map never settles during this test, and 'load' already passed.
+        mapInstance.isStyleLoaded.mockReturnValue(false);
+        mapInstance.on.mockImplementation(() => {});
+        const idleHandlers = [];
+        mapInstance.once.mockImplementation((event, fn) => { if (event === 'idle') idleHandlers.push(fn); });
+        const offIdle = [];
+        mapInstance.off.mockImplementation((event, fn) => { if (event === 'idle') offIdle.push(fn); });
+
+        const props = {
+            floodData: null, bbox: null, scenario: 'ssp245', year: 2100, percentile: 50,
+            onBoundsChange: vi.fn(), pending: false, lastRequest: null, mapRef: createRef(),
+        };
+        const { rerender } = render(<MapView {...props} resolvedSlr={null} />);
+        const staleHandler = idleHandlers[idleHandlers.length - 1];
+        expect(staleHandler).toBeTruthy();
+
+        // resolvedSlr arrives before the map settled -> the raster effect re-runs.
+        rerender(<MapView {...props} resolvedSlr={0.5} />);
+
+        // The handler captured while SLR was null (which would have zeroed the
+        // overlay opacity when it eventually fired) must be cancelled.
+        expect(offIdle).toContain(staleHandler);
     });
 
     it('renders status overlay with "Ready" when not pending', () => {

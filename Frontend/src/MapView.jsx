@@ -3,6 +3,34 @@ import { useEffect, useRef, useImperativeHandle } from "react";
 import maplibregl from "maplibre-gl";
 import { escapeHtml } from "./utils";
 
+// Run fn as soon as the style can accept source/layer changes. isStyleLoaded()
+// can briefly return false AFTER the one-shot 'load' event has already fired
+// (e.g. while basemap tiles settle), so fall back to 'idle' — which keeps firing
+// as the map settles — rather than 'load', which would be missed and leave the
+// flood overlay unrendered until the next state change.
+//
+// Returns a cleanup that cancels a still-pending 'idle' listener. This is
+// essential: without it, an effect that re-runs (e.g. once resolvedSlr arrives)
+// leaves the earlier run's stale callback registered. That stale callback —
+// which captured the previous state — fires when the map next goes idle and can
+// undo the newer run's work (e.g. resetting the just-shown overlay's opacity to
+// 0 because it captured resolvedSlr === null).
+function runWhenStyleReady(map, fn) {
+    if (map.isStyleLoaded()) {
+        fn();
+        return () => {};
+    }
+    const onIdle = () => fn();
+    if (typeof map.once === "function") {
+        map.once("idle", onIdle);
+    } else {
+        map.on("idle", onIdle);
+    }
+    return () => {
+        if (typeof map.off === "function") map.off("idle", onIdle);
+    };
+}
+
 export default function MapView({ floodData, bbox, scenario, year, percentile, resolvedSlr, connectivityMode = "boundary", waterMaskMode = "none", initialView = null, onBoundsChange, pending, lastRequest, mapRef: externalMapRef }) {
     const mapContainer = useRef(null);
     const mapRef = useRef(null);
@@ -228,15 +256,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             });
         };
 
-        if (map.isStyleLoaded()) {
-            applyPoints();
-        } else {
-            const onLoad = () => {
-                applyPoints();
-                map.off('load', onLoad);
-            };
-            map.on('load', onLoad);
-        }
+        return runWhenStyleReady(map, applyPoints);
     }, [floodData]);
 
     // Raster tile layer (flood mask)
@@ -274,15 +294,7 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             }
         };
 
-        if (map.isStyleLoaded()) {
-            applyRaster();
-        } else {
-            const onLoad = () => {
-                applyRaster();
-                map.off('load', onLoad);
-            };
-            map.on('load', onLoad);
-        }
+        return runWhenStyleReady(map, applyRaster);
     }, [scenario, year, percentile, connectivityMode, waterMaskMode, resolvedSlr]);
 
     return (

@@ -26,6 +26,9 @@ export const mapInstance = {
     on: vi.fn(function(event, fn) {
         if (event === 'load') fn();
     }),
+    once: vi.fn(function(event, fn) {
+        if (event === 'load' || event === 'idle') fn();
+    }),
     off: vi.fn(),
     setPaintProperty: vi.fn(),
 };
