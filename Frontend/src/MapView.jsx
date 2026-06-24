@@ -321,8 +321,8 @@ export default function MapView({ floodData, bbox, scenario, year, percentile, r
             <div style={{
                 position: "absolute",
                 bottom: 8,
-                left: 8, 
-                background: "rgba(0,0,0,0.6)", 
+                left: 384,
+                background: "rgba(0,0,0,0.6)",
                 color: "#fff", 
                 padding: "6px 10px", 
                 borderRadius: 4, 

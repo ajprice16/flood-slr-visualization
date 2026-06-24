@@ -55,18 +55,18 @@ describe('App', () => {
 
     it('shows the landing page initially', () => {
         render(<App />);
-        expect(screen.getByText('Flood & Sea Level Rise Visualization')).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Sea Level Rise Explorer' })).toBeTruthy();
         expect(screen.getByRole('button', { name: /Proceed to Interactive Map/i })).toBeDisabled();
     });
 
-    it('shows IPCC Projections sidebar initially', async () => {
+    it('shows the control panel initially', async () => {
         await enterMap();
-        expect(screen.getByText('IPCC Projections')).toBeTruthy();
+        expect(screen.getByText('Projection Year')).toBeTruthy();
     });
 
-    it('shows scenario selector dropdown', async () => {
+    it('shows scenario cards', async () => {
         await enterMap();
-        expect(screen.getByRole('option', { name: /SSP2-4.5/i })).toBeTruthy();
+        expect(screen.getByRole('button', { name: /SSP2-4.5/i })).toBeTruthy();
     });
 
     it('shows projection year slider', async () => {
@@ -81,15 +81,19 @@ describe('App', () => {
         expect(screen.getByText(/High \(95th\)/)).toBeTruthy();
     });
 
-    it('shows connectivity and water mask controls', async () => {
+    it('shows connectivity and water mask controls under Advanced', async () => {
         await enterMap();
-        expect(screen.getByText('Connectivity')).toBeTruthy();
+        // These controls live behind the collapsed "Advanced" disclosure.
+        await act(async () => {
+            fireEvent.click(screen.getByText(/Advanced/));
+        });
+        expect(screen.getByText('Flood Spread Mode')).toBeTruthy();
         expect(screen.getByText('Water Mask')).toBeTruthy();
         expect(screen.getByText('3x3 Mosaic')).toBeTruthy();
         expect(screen.getByText('Raster (if configured)')).toBeTruthy();
     });
 
-    it('toggles into story mode and hides sidebar', async () => {
+    it('toggles into story mode and hides the control panel', async () => {
         await enterMap();
         const btn = screen.getByText('Start Story');
 
@@ -99,8 +103,8 @@ describe('App', () => {
 
         // Button text changes
         expect(screen.getByText('Exit Story')).toBeTruthy();
-        // Sidebar heading should no longer be visible
-        expect(screen.queryByText('IPCC Projections')).toBeNull();
+        // Control panel should no longer be visible
+        expect(screen.queryByText('Projection Year')).toBeNull();
         // First story shown
         expect(screen.getByText('Miami')).toBeTruthy();
     });
@@ -114,7 +118,7 @@ describe('App', () => {
             fireEvent.click(screen.getByText('Exit Story'));
         });
         expect(screen.getByText('Start Story')).toBeTruthy();
-        expect(screen.getByText('IPCC Projections')).toBeTruthy();
+        expect(screen.getByText('Projection Year')).toBeTruthy();
     });
 
     it('closes story panel when × is clicked inside StoryMap', async () => {
@@ -128,13 +132,13 @@ describe('App', () => {
         expect(screen.getByText('Start Story')).toBeTruthy();
     });
 
-    it('changes scenario when dropdown changes', async () => {
+    it('changes scenario when a scenario card is clicked', async () => {
         await enterMap();
-        const select = screen.getAllByRole('combobox')[0];
+        const card = screen.getByRole('button', { name: /SSP5-8.5/i });
         await act(async () => {
-            fireEvent.change(select, { target: { value: 'ssp585' } });
+            fireEvent.click(card);
         });
-        expect(select.value).toBe('ssp585');
+        expect(card.getAttribute('aria-pressed')).toBe('true');
     });
 
     it('changes year when slider moves', async () => {
