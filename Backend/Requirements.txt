@@ -2,7 +2,7 @@
 ###############################################
 fastapi==0.135.2
 uvicorn==0.42.0
-python-multipart==0.0.27
+python-multipart==0.0.31
 rasterio==1.4.4
 numpy==2.4.4
 # Additional runtime deps discovered while running main.py
