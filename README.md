@@ -2,7 +2,7 @@
 
 **An interactive map of how high the sea may rise — and who lives in the way.**
 
-🌐 **Live demo:** <https://oursealevel.org> · <https://sea-level-rise.org>
+🌐 **Live demo:** <https://oursealevel.org> · <https://sea-level-rise.org> (Currently down pending hosting renewal)
 📚 **Full documentation:** [Project Wiki](https://github.com/ajprice16/flood-slr-visualization/wiki)
 
 ![Interactive map with Miami flood overlay](docs/images/home-hero.png)
@@ -27,19 +27,6 @@ It is built on published science:
 
 Everything is rendered on the fly: every flood pixel you see is computed from the underlying
 elevation grid the moment you change a control, with no pre-rendered scenarios.
-
----
-
-## For visitors from JpGU 2026
-
-Welcome — this is the live tool behind the talk. Three places to start:
-
-1. **Try the demo** at <https://oursealevel.org>. Click *Start Story* (top right) for a
-   guided tour through Miami, New Orleans, Tokyo, Tabasco (Mexico), and the Bengal delta.
-2. **Read the methodology** → [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources)
-   for full provenance and citations.
-3. **Cite or reuse** — the source code is in this repository; the underlying datasets keep
-   their original licenses (see [Data Sources](https://github.com/ajprice16/flood-slr-visualization/wiki/Data-Sources)).
 
 ---
 
@@ -160,4 +147,4 @@ guidelines.
 ## Contact
 
 - GitHub: <https://github.com/ajprice16/flood-slr-visualization>
-- Live demo: <https://oursealevel.org> · <https://sea-level-rise.org>
+- Email me: <ajprice@mail.wlu.edu>
